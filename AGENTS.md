@@ -9,7 +9,7 @@
 > `.github/copilot-instructions.md` (Copilot). If a binding disagrees with **this** file, this file wins
 > and the binding must be fixed in the same change.
 >
-> Last reviewed: **2026-11-01** · Ruleset version **v1.3.0** · Toolchain in use: `rustc`/`cargo`
+> Last reviewed: **2026-11-01** · Ruleset version **v1.4.0** · Toolchain in use: `rustc`/`cargo`
 > 1.98.0, `clippy` 0.1.98, `rustfmt` 1.9.0-stable · Edition **2024** · Status: **Phase 0 complete**
 > (`error` + `unicode` landed) · **Releases are automated** from Conventional Commits via release-plz
 > (§8) — versions, tags and `CHANGELOG.md` are never written by hand.
@@ -828,6 +828,8 @@ confirmation first.
 - [ ] Benchmarks added/updated when a hot path changed, and the comparison was run.
 - [ ] **Full quality gate (§4.8) passes**, with the raw output included in the report.
 - [ ] The completion report (§5.6) is posted, including anything "NOT VERIFIED" and why.
+- [ ] Every commit message and git operation was approved by the user before it ran, or the task carried
+      explicit pre-authorisation (§5.7).
 - [ ] Working tree contains only intended changes (`git --no-pager status`, `git --no-pager diff --stat`).
 
 ### 5.4 Red lines — never do these
@@ -869,6 +871,8 @@ confirmation first.
     it, and release-plz would derive the wrong next version (§8.2).
 19. **Never** disable, `continue-on-error:` or "temporarily" weaken `conventional-commits.yml`,
     `release.yml` or their checks in `ci.yml` (§8.4).
+20. **Never** run a history- or remote-changing git command (`commit`, `branch`, `tag`, `rebase`, `reset`,
+    `push`, …) without an approved proposal — exact commands, verbatim message, expected state (§5.7).
 
 ### 5.5 Ambiguity, divergences & decision records
 
@@ -954,6 +958,35 @@ by hand (§8.2, §8.7)
 Rules: never claim a gate passed without pasting its result; never report "done" with a failing gate;
 keep it skimmable; mention every file you created or modified; if you could not run something, say so in
 "Not verified".
+
+### 5.7 Git operations require a human green light
+
+**Default: no history- or remote-changing git command runs until the user has seen exactly what will
+happen and approved it.**
+
+* **Allowed without asking (read-only):** `status`, `diff`, `log`, `show`, `branch`, `ls-files`, `grep`,
+  `ls-remote`, `remote -v`, `rev-parse`, `for-each-ref`. Report anything surprising they reveal.
+* **Allowed but must be announced:** `fetch` (it only moves remote-tracking refs) and `add` /
+  `restore --staged` (index only, reversible — they are how a proposal is assembled).
+* **Requires explicit approval, every time:** `commit`, `commit --amend`, `rebase`, `cherry-pick`,
+  `merge`, `revert`, `reset` (any mode), `switch`/`checkout` that changes branch, `stash
+  pop/apply/drop`, `branch -d/-D`, `tag`, `mv`, every `push` (including `--force-with-lease`),
+  `push --delete`, `remote add/remove/set-url`, repo-local `config` writes, and any history rewrite.
+* **A proposal must contain:** (1) the exact commands in order; (2) the exact paths affected; (3) the
+  **verbatim commit message** (subject *and* body); (4) the expected resulting state (branch,
+  divergence, what lands where, what is pushed); (5) every destructive effect named explicitly
+  (e.g. "`reset --hard` discards the 3 uncommitted edits in `src/x.rs`").
+* **The green light must be explicit and specific to that proposal.** "ok", "thanks", "continue" or a
+  new question are *not* approval. If the proposal changes by a byte — reworded subject, extra file,
+  different base branch — ask again.
+* **Pre-authorisation is per task:** "commit and push when the gate is green" approves exactly that,
+  expires with the task, and never covers tags, force-pushes, merging protected branches or releases
+  (§8.7).
+* **Before stacking** any commit on an existing branch, `fetch` and confirm it is not already merged
+  (`git branch --merged origin/main`); if it is, cut a fresh branch from `origin/main` instead.
+* **Ambiguity resolves to waiting.** An agent that asks is never wrong; an agent that puts the wrong
+  message into tagged history is. Proactivity means preparing the change, the message and the evidence —
+  not running the git command.
 
 ## 6. Roadmap & parity tracker
 
@@ -1539,6 +1572,7 @@ Reminder: `cargo test --doc` is not implied by a plain `cargo test --lib`, and c
 
 | Version | Date | Change |
 |---|---|---|
+| **1.4.0** | 2026-11-01 | MINOR: **§5.7 "Git operations require a human green light"** — no history- or remote-changing git command runs until the user has approved a proposal containing the exact commands, paths, verbatim commit message, expected state and destructive effects; read-only commands are allowlisted, `fetch`/`add` are announce-only, and "ok"/"thanks" are explicitly not approval. Added red line 20, a Definition of Done item, one bullet in each vendor binding and a note in `CONTRIBUTING.md`. |
 | **1.3.0** | 2026-11-01 | MINOR: the canonical ruleset was renamed `CLAUDE.md` → **`AGENTS.md`** (no vendor-named copy ships; vendor files are bindings), and §0.5 ("The ruleset file and its bindings") records the naming policy as a rule. All 20 files referencing the old name were updated, including Rustdoc in `src/**` and the workflow comments. Also fixed the header block, which had lagged at v1.1.0. |
 | **1.2.0** | 2026-11-01 | MINOR: added `CONTRIBUTING.md`, the human on-ramp (setup, branch/PR model, commit grammar with the release-impact table, what may and may not be touched, tests/docs expectations, local gate, release flow, troubleshooting, licensing of contributions). New rule: §5.2 requires `CONTRIBUTING.md` to be updated in the same commit as any branch/commit/PR/gate rule change. Also recorded in the §3.1 layout and the §8.3 file table; `README.md` points newcomers at it. |
 | **1.1.0** | 2026-11-01 | MINOR: automated semantic versioning & releases. Adds **§8** (single source of truth, commit→version table, tooling/files, secrets/permissions/branch protection, crates.io publishing policy, release flow, agent red lines, local dry-runs); rewrites **§5.2** with the CI-enforced commit grammar and release-impact rules; adds gate **G9** (§4.8), red lines **16–19** (§5.4), a release-impact item in §5.3/§5.6, **§7.1** (`conventional-commits.yml`) and **§7.2** (`release.yml`); updates §6 Phase 0/4 and Appendix D. Repository: adds `release-plz.toml`, `.github/workflows/release.yml`, `.github/workflows/conventional-commits.yml`. |
@@ -1555,6 +1589,6 @@ a new gate, or a new mandatory test category; `PATCH` = wording, typos, clarifie
 
 ---
 
-*End of `AGENTS.md` v1.3.0 — if you are an agent reading this at the start of a task, re-read §0.2, the
+*End of `AGENTS.md` v1.4.0 — if you are an agent reading this at the start of a task, re-read §0.2, the
 plan template in §5.1, the edge-case matrix in §4.3 and the gate in §4.8 before you write a single line
 of code or a single test.*
