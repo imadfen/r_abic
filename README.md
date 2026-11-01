@@ -31,6 +31,9 @@ cargo test
 
 ## Development
 
+New here? Start with **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — setup, the branch/commit/PR rules, and the
+gate to run before pushing.
+
 Project rules for humans and agents live in **[`CLAUDE.md`](CLAUDE.md)** (canonical), mirrored in
 [`.cursorrules`](.cursorrules) and [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
 Read `CLAUDE.md` before making changes: it fixes the architecture, Unicode/allocation conventions, the
