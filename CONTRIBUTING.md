@@ -148,6 +148,11 @@ verify your claims from the diff and the CI panel alone.
 Keep PRs small — one logical change. A 2 000-line PR mixing three features will sit unreviewed; three
 focused PRs get merged.
 
+> **If you work through a coding agent:** `AGENTS.md` §5.7 requires it to get your explicit green light —
+> the exact commands, the verbatim commit message and the expected resulting state — before it creates a
+> commit, moves a branch or pushes anything. Read the proposal before approving it; that gate exists
+> because an unreviewed commit message is what silently ships the wrong version (§4).
+
 ## 6. What you may change, and what you must not touch
 
 | Path | Rule |

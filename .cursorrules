@@ -1,6 +1,6 @@
 # r_abic — agent rules (Cursor binding to AGENTS.md)
 
-The canonical, complete ruleset is **`./AGENTS.md`** (v1.3.0, agent-neutral). Read it before acting; when
+The canonical, complete ruleset is **`./AGENTS.md`** (v1.4.0, agent-neutral). Read it before acting; when
 it and this file disagree, `AGENTS.md` wins. This binding repeats only the non-negotiables.
 
 ## Project
@@ -25,6 +25,8 @@ parity target: PyArabic (`linuxscout/pyarabic`). Edition 2024; toolchain rustc/c
    before writing code; one logical feature per task/commit.
 9. **No claim without evidence.** Run the full gate and paste its output; state "NOT VERIFIED" rather
    than guessing.
+10. **Never run a git operation without approval.** No commit, branch, tag, rebase, reset or push until
+    the user has approved the exact commands and the verbatim commit message (`AGENTS.md` §5.7).
 
 ## Mandatory quality gate before declaring a task done
 ```powershell

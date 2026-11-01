@@ -1,6 +1,6 @@
 # Copilot / AI assistant instructions for `r_abic`
 
-> **Canonical ruleset:** [`AGENTS.md`](../AGENTS.md) (v1.3.0, agent-neutral) at the repository root. Read it
+> **Canonical ruleset:** [`AGENTS.md`](../AGENTS.md) (v1.4.0, agent-neutral) at the repository root. Read it
 > fully before suggesting or writing code. This file is a Copilot binding that repeats only the rules that
 > must never be violated; if there is any conflict, `AGENTS.md` is authoritative.
 
@@ -28,6 +28,8 @@ built as a behavioural-parity alternative to the Python library **PyArabic**. Ed
   ligatures make it a bug waiting to happen).
 * Never copy code, docstrings, tables or tests from the GPL upstream project into this MIT/Apache-2.0 crate.
 * Never weaken, skip or delete a test to make the build pass; never report success without running the gate.
+* Never run a git operation (commit, branch, tag, rebase, reset, push) without the user approving the exact
+  commands and the verbatim commit message — `AGENTS.md` §5.7.
 
 ## Quality gate (must pass, with output pasted into the report)
 ```
