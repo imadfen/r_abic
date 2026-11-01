@@ -1,0 +1,80 @@
+# Automated semantic versioning and GitHub releases — see CLAUDE.md §8.
+#
+# Two jobs, following the official release-plz pattern
+# (https://release-plz.dev/docs/github/quickstart):
+#
+#   release-plz-release  -> `release-plz release`: tags the version already present in
+#                           Cargo.toml and creates the GitHub Release. Runs only once the
+#                           release PR has been merged (`release_always = false`).
+#   release-plz-pr       -> `release-plz release-pr`: opens/updates the release PR that
+#                           bumps Cargo.toml + Cargo.lock and regenerates CHANGELOG.md.
+#
+# The next version is derived from Conventional Commits since the last tag:
+#   `feat: …`        -> MINOR
+#   `fix: …`         -> PATCH
+#   `!`/BREAKING CHANGE -> MAJOR (MINOR while the crate is 0.x)
+#   chore/docs/ci/style/test/refactor/perf alone -> no release
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {} # every job declares exactly what it needs
+
+jobs:
+  release-plz-release:
+    name: Release (tag + GitHub Release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only the upstream repository releases; forks stay silent.
+    if: github.repository_owner == 'imadfen'
+    permissions:
+      contents: write # create tags and GitHub releases
+      pull-requests: read # detect the merged release PR and its commits
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4 # keep in sync with ci.yml (bump all workflows together)
+        with:
+          fetch-depth: 0 # release-plz needs the full history *and* the tags
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run `release-plz release`
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          # A PAT is recommended (CLAUDE.md §8.4): events created with GITHUB_TOKEN do not
+          # trigger other workflows, so release-PR CI would not run.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+          # Only used once release-plz.toml sets `publish = true` (CLAUDE.md §8.5).
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  release-plz-pr:
+    name: Release PR (version bump + CHANGELOG)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.repository_owner == 'imadfen'
+    permissions:
+      contents: write # push the `release-plz-*` branch
+      pull-requests: write # open and update the release PR
+    # Serialise (never cancel) release-PR jobs: cancellation could skip a release.
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run `release-plz release-pr`
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}

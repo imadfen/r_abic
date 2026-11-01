@@ -1,0 +1,95 @@
+# Enforces the Conventional Commits specification on PR titles and commit subjects.
+# Rationale and the type table: CLAUDE.md §5.2 (commits) and §8.2 (release impact).
+#
+# The check is plain bash on purpose: no third-party action to audit or pin (CLAUDE.md §7).
+name: Conventional Commits
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate pull request title
+        shell: bash
+        env:
+          # Passed through `env` (never interpolated into the script) to avoid shell injection.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .{1,72}$'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "::error title=Invalid PR title::'$TITLE' is not a Conventional Commit." >&2
+            cat >&2 <<'EOF'
+          Expected e.g. 'feat(normalize): add strip_tatweel' or 'fix(tokenize)!: drop trailing marks'.
+          Allowed types: feat fix docs style refactor perf test build ci chore revert.
+          The PR title becomes the squash-merge commit subject, and release-plz derives the next
+          version from it: feat -> MINOR, fix -> PATCH, '!'/BREAKING CHANGE -> MAJOR (MINOR on 0.x).
+          See CLAUDE.md §5.2 and §8.2.
+          EOF
+            exit 1
+          fi
+          echo "PR title OK: $TITLE"
+
+  commit-subjects:
+    name: Commit subjects
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the commits of the PR / of the pushed range
+      - name: Validate commit subjects
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .{1,72}$'
+          subjects="$(mktemp)"
+
+          if [[ "$EVENT" == "pull_request" ]]; then
+            git log --format=%s "$BASE_SHA..$HEAD_SHA" > "$subjects"
+          elif [[ "$BEFORE" =~ ^0+$ ]]; then
+            # First push to the branch: only the tip commit exists.
+            git log -n 1 --format=%s "$SHA" > "$subjects"
+          else
+            git log --format=%s "$BEFORE..$SHA" > "$subjects"
+          fi
+
+          fail=0
+          while IFS= read -r subject; do
+            [[ -z "$subject" ]] && continue
+            # Merge commits and git's default revert message are exempt (prefer `revert: …`).
+            case "$subject" in
+              "Merge "* | Revert\ \"*) continue ;;
+            esac
+            if [[ ! "$subject" =~ $pattern ]]; then
+              echo "::error title=Invalid commit subject::$subject" >&2
+              fail=1
+            fi
+          done < "$subjects"
+
+          if [[ "$fail" -ne 0 ]]; then
+            echo "Fix the commit subjects (rebase/amend) or squash-merge with a valid PR title." >&2
+            echo "See CLAUDE.md §5.2 and §8.2." >&2
+            exit 1
+          fi
+
+          echo "All commit subjects are Conventional Commits:"
+          sed 's/^/  /' "$subjects"

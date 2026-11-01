@@ -1,0 +1,53 @@
+# release-plz configuration — see CLAUDE.md §8 and https://release-plz.dev/docs/config
+#
+# release-plz reads this file from the repository root (checked in this order:
+# `release-plz.toml`, `.release-plz.toml`, `.config/release-plz.toml`).
+# Fields not listed here keep release-plz's defaults.
+
+[workspace]
+# --- what the release PR contains -------------------------------------------
+changelog_update = true      # regenerate CHANGELOG.md for the new version
+dependencies_update = false  # `cargo update` in the release PR: no runtime deps (P1)
+release_always = false       # tag/release only after the release PR is merged
+semver_check = false         # needs the crate on crates.io; enable with publish (CLAUDE.md §8.5)
+
+# --- publishing to crates.io ------------------------------------------------
+# The crate is NOT published yet. Flip to `true` only when
+#   (a) a `CARGO_REGISTRY_TOKEN` secret exists,
+#   (b) the first `cargo publish` was done manually (crates.io cannot create new crates via
+#       trusted publishing), and
+#   (c) `semver_check = true` above is re-enabled,
+# in the same change that adds a `docs/adr/` record (CLAUDE.md §8.5).
+publish = false
+
+# --- git tag + GitHub Release ----------------------------------------------
+git_tag_enable = true
+git_release_enable = true
+git_release_type = "auto"    # "auto" = prod for 1.0.0+, pre-release otherwise
+
+# --- release pull request ---------------------------------------------------
+pr_labels = ["release"]
+pr_branch_prefix = "release-plz-"
+pr_draft = false
+
+# --- changelog format (git-cliff subset; Keep a Changelog style headings) ---
+[changelog]
+# Commits with a breaking-change marker always appear in the changelog, even if skipped below.
+protect_breaking_commits = true
+
+# First matching parser wins. The version is computed from `feat`/`fix`/breaking markers only, so
+# `chore`/`ci`/`style`/`test` entries would be noise: they are skipped here on purpose.
+commit_parsers = [
+  { message = "^feat", group = "### Added" },
+  { message = "^fix", group = "### Fixed" },
+  { message = "^perf", group = "### Performance" },
+  { message = "^refactor", group = "### Changed" },
+  { message = "^revert", group = "### Reverted" },
+  { message = "^docs", group = "### Documentation" },
+  { message = "^chore\\(deps\\)", group = "### Dependencies" },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore", skip = true },
+  { message = "^ci", skip = true },
+  { message = "^style", skip = true },
+  { message = "^test", skip = true },
+]
