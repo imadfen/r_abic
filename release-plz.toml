@@ -1,4 +1,4 @@
-# release-plz configuration — see CLAUDE.md §8 and https://release-plz.dev/docs/config
+# release-plz configuration — see AGENTS.md §8 and https://release-plz.dev/docs/config
 #
 # release-plz reads this file from the repository root (checked in this order:
 # `release-plz.toml`, `.release-plz.toml`, `.config/release-plz.toml`).
@@ -9,7 +9,7 @@
 changelog_update = true      # regenerate CHANGELOG.md for the new version
 dependencies_update = false  # `cargo update` in the release PR: no runtime deps (P1)
 release_always = false       # tag/release only after the release PR is merged
-semver_check = false         # needs the crate on crates.io; enable with publish (CLAUDE.md §8.5)
+semver_check = false         # needs the crate on crates.io; enable with publish (AGENTS.md §8.5)
 
 # --- publishing to crates.io ------------------------------------------------
 # The crate is NOT published yet. Flip to `true` only when
@@ -17,7 +17,7 @@ semver_check = false         # needs the crate on crates.io; enable with publish
 #   (b) the first `cargo publish` was done manually (crates.io cannot create new crates via
 #       trusted publishing), and
 #   (c) `semver_check = true` above is re-enabled,
-# in the same change that adds a `docs/adr/` record (CLAUDE.md §8.5).
+# in the same change that adds a `docs/adr/` record (AGENTS.md §8.5).
 publish = false
 
 # --- git tag + GitHub Release ----------------------------------------------

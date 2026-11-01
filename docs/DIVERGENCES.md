@@ -1,7 +1,7 @@
 # Intentional divergences from PyArabic
 
 Every entry documents a behaviour that intentionally differs from
-[PyArabic](https://github.com/linuxscout/pyarabic). The format is defined in `CLAUDE.md` §5.5; each
+[PyArabic](https://github.com/linuxscout/pyarabic). The format is defined in `AGENTS.md` §5.5; each
 entry is pinned by at least one test and (where it matters) by an ADR.
 
 Statuses: `intentional, permanent` · `intentional, temporary` · `needs maintainer confirmation`.
@@ -51,7 +51,7 @@ Statuses: `intentional, permanent` · `intentional, temporary` · `needs maintai
   `isArabicword`, `isArabicstring`, `stripLastHaraka`, …) next to the snake_case API.
 * **r_abic:** only the snake_case names exist. Where an upstream snake_case spelling is unusual it is
   kept verbatim (`strip_lastharaka`, `delimite_language`) and documented with `#[doc(alias = "…")]`.
-* **Rationale:** Rust naming conventions (`P2`, `CLAUDE.md` §3.7); two spellings for one function is
+* **Rationale:** Rust naming conventions (`P2`, `AGENTS.md` §3.7); two spellings for one function is
   an API-consistency cost with no benefit for a new crate.
 * **Pinned by:** absence — the symbols simply do not exist; `docs/PARITY.md` marks them
   `out-of-scope`.

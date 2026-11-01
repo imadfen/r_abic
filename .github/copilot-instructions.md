@@ -1,8 +1,8 @@
 # Copilot / AI assistant instructions for `r_abic`
 
-> **Canonical source:** [`CLAUDE.md`](../CLAUDE.md) (v1.2.0) at the repository root. Read it fully before
-> suggesting or writing code. This file repeats only the rules that must never be violated; if there is
-> any conflict, `CLAUDE.md` is authoritative.
+> **Canonical ruleset:** [`AGENTS.md`](../AGENTS.md) (v1.3.0, agent-neutral) at the repository root. Read it
+> fully before suggesting or writing code. This file is a Copilot binding that repeats only the rules that
+> must never be violated; if there is any conflict, `AGENTS.md` is authoritative.
 
 ## What this repository is
 A high-performance, memory-efficient, **dependency-free** Rust library for Arabic text processing
@@ -40,7 +40,7 @@ cargo bench --no-run
 cargo tree -e normal --depth 1        # must list only r_abic
 ```
 
-## Commits & releases (CI-enforced — `CLAUDE.md` §5.2, §8)
+## Commits & releases (CI-enforced — `AGENTS.md` §5.2, §8)
 
 * Commit subjects and PR titles must follow Conventional Commits
   (`feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`), with an

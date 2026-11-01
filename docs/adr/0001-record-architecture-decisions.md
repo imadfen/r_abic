@@ -10,8 +10,8 @@
 while evolving into idiomatic Rust. Decisions that shape the public API, the dependency set, the
 licensing story or the testing policy are expensive to reverse and easy to forget.
 
-`CLAUDE.md` holds the day-to-day rules; this directory holds the *why* behind decisions that override
-or extend those rules (`CLAUDE.md` §0.1, precedence item 3).
+`AGENTS.md` holds the day-to-day rules; this directory holds the *why* behind decisions that override
+or extend those rules (`AGENTS.md` §0.1, precedence item 3).
 
 ## Decision
 
@@ -45,8 +45,8 @@ What we rejected and why.
 ```
 
 Rules: ADRs are append-only; a decision changes by adding a new ADR that supersedes the old one and by
-editing only the old one's `Status` line. Any ADR that relaxes a `P*` principle in `CLAUDE.md` must be
-cross-referenced from `CLAUDE.md` and from the PR description.
+editing only the old one's `Status` line. Any ADR that relaxes a `P*` principle in `AGENTS.md` must be
+cross-referenced from `AGENTS.md` and from the PR description.
 
 ## Consequences
 

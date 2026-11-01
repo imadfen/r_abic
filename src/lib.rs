@@ -7,13 +7,13 @@
 //!
 //! `r_abic` is an independent Rust implementation whose documented behaviour is a superset of
 //! [PyArabic](https://github.com/linuxscout/pyarabic)'s API. It is **not** a port of `PyArabic`'s
-//! source: see `CLAUDE.md` in the repository root for the parity, provenance and licensing policy.
+//! source: see `AGENTS.md` in the repository root for the parity, provenance and licensing policy.
 //!
 //! ## Status
 //!
 //! Phase 0 — the crate provides the error type and the [`unicode`] module (code points, character
 //! classes, classification predicates). Text transforms, tokenization, unshaping, transliteration
-//! and numbers arrive in later phases (see `CLAUDE.md` §6).
+//! and numbers arrive in later phases (see `AGENTS.md` §6).
 //!
 //! ## Examples
 //!
@@ -37,7 +37,7 @@
 //! ## Design constraints
 //!
 //! Guaranteed by the build and enforced by tests: no `unsafe`, no runtime dependencies, no panics on
-//! user input, and no assumption that an Arabic character is one byte (see `CLAUDE.md` §1.2).
+//! user input, and no assumption that an Arabic character is one byte (see `AGENTS.md` §1.2).
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
@@ -51,7 +51,7 @@
     clippy::dbg_macro,
     clippy::print_stdout
 )]
-// Tests assert freely; the deny list above targets library code only (`CLAUDE.md` §3.7).
+// Tests assert freely; the deny list above targets library code only (`AGENTS.md` §3.7).
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 // Public names deliberately mirror the upstream API (`normalize::normalize_searchtext`, ...).
 #![allow(clippy::module_name_repetitions)]

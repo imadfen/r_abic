@@ -4,7 +4,7 @@ Arabic text processing library for Rust, inspired by
 [PyArabic](https://github.com/linuxscout/pyarabic).
 
 > Status: **Phase 0** — error type + the `unicode` module (code points, class tables, classification
-> predicates). Text transforms arrive in Phase 1; see [`CLAUDE.md`](CLAUDE.md) §6.
+> predicates). Text transforms arrive in Phase 1; see [`AGENTS.md`](AGENTS.md) §6.
 
 ## Quick start
 
@@ -34,9 +34,10 @@ cargo test
 New here? Start with **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — setup, the branch/commit/PR rules, and the
 gate to run before pushing.
 
-Project rules for humans and agents live in **[`CLAUDE.md`](CLAUDE.md)** (canonical), mirrored in
-[`.cursorrules`](.cursorrules) and [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
-Read `CLAUDE.md` before making changes: it fixes the architecture, Unicode/allocation conventions, the
+Project rules live in **[`AGENTS.md`](AGENTS.md)** — the canonical, agent-neutral ruleset — with condensed
+bindings for Cursor ([`.cursorrules`](.cursorrules)) and Copilot
+([`.github/copilot-instructions.md`](.github/copilot-instructions.md)).
+Read `AGENTS.md` before making changes: it fixes the architecture, Unicode/allocation conventions, the
 mandatory TDD workflow, the edge-case matrix and the release phases.
 
 Before opening a change, run the full quality gate:
@@ -51,8 +52,8 @@ cargo bench --no-run                       # once benches exist
 ```
 
 Behavioural parity target: [PyArabic](https://github.com/linuxscout/pyarabic) — its API is mapped
-module-by-module in `CLAUDE.md` §3.2 / Appendix B, and intentional differences are recorded in
-`docs/DIVERGENCES.md` (created in Phase 0, see `CLAUDE.md` §6).
+module-by-module in `AGENTS.md` §3.2 / Appendix B, and intentional differences are recorded in
+`docs/DIVERGENCES.md` (created in Phase 0, see `AGENTS.md` §6).
 
 ## Releases
 
@@ -60,7 +61,7 @@ Releases are fully automated from [Conventional Commits](https://www.conventiona
 [release-plz](https://release-plz.dev) computes the next SemVer version from the commits since the last
 tag, bumps `Cargo.toml` + `Cargo.lock`, regenerates the changelog, and — once the release PR is merged —
 creates the git tag and the GitHub Release (`.github/workflows/release.yml`, `release-plz.toml`; policy
-in [`CLAUDE.md`](CLAUDE.md) §8).
+in [`AGENTS.md`](AGENTS.md) §8).
 
 | Commit / PR title | Version bump |
 |---|---|

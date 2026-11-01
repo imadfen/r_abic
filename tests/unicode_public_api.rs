@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Integration tests for the Phase 0 public API.
 //!
-//! These tests deliberately use only the public surface of the crate (`CLAUDE.md` §4.2): if a test
+//! These tests deliberately use only the public surface of the crate (`AGENTS.md` §4.2): if a test
 //! needs `pub(crate)` access, the item should probably be public instead.
 
 use r_abic::Error;

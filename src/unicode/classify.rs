@@ -2,7 +2,7 @@
 //! Character classification predicates for Arabic text.
 //!
 //! Every predicate is a `const fn` for single code points (usable in `const` contexts, no allocation,
-//! no table lookups: contiguous ranges are matched with `matches!`, per `CLAUDE.md` §3.5) and a plain
+//! no table lookups: contiguous ranges are matched with `matches!`, per `AGENTS.md` §3.5) and a plain
 //! `fn` for whole-`&str` helpers.
 //!
 //! ```
@@ -84,7 +84,7 @@ pub const fn is_tatweel(c: char) -> bool {
 /// Returns `true` for the eight lam-alef ligature presentation forms (`U+FEF5`–`U+FEFC`).
 ///
 /// This includes both the isolated and the final forms of each of the four pairs, so a de-shaping
-/// pass never leaves a ligature behind (`CLAUDE.md` §4.3, E15).
+/// pass never leaves a ligature behind (`AGENTS.md` §4.3, E15).
 #[must_use]
 pub const fn is_ligature(c: char) -> bool {
     matches!(c, '\u{FEF5}'..='\u{FEFC}')
@@ -167,7 +167,7 @@ pub const fn is_arabic_digit(c: char) -> bool {
 /// Returns `true` if `c` is an invisible formatting code point we classify explicitly.
 ///
 /// Covers `U+061C` ALM, `U+200C` ZWNJ, `U+200D` ZWJ, `U+200E` LRM, `U+200F` RLM and `U+FEFF` BOM.
-/// These are preserved by transforms and never silently dropped (`CLAUDE.md` §3.4, E11–E13).
+/// These are preserved by transforms and never silently dropped (`AGENTS.md` §3.4, E11–E13).
 #[must_use]
 pub const fn is_formatting(c: char) -> bool {
     matches!(c, '\u{061C}' | '\u{200C}'..='\u{200F}' | '\u{FEFF}')
@@ -340,7 +340,7 @@ mod tests {
         for &ligature in tables::LIGUATURES {
             assert!(is_ligature(ligature), "is_ligature({ligature:?})");
         }
-        // The final forms of the same four pairs are ligatures too (E15 in `CLAUDE.md` §4.3).
+        // The final forms of the same four pairs are ligatures too (E15 in `AGENTS.md` §4.3).
         for c in [LAM_ALEF, '\u{FEF6}', LAM_ALEF_HAMZA_ABOVE, '\u{FEF8}'] {
             assert!(is_ligature(c), "is_ligature({c:?})");
         }
@@ -415,7 +415,7 @@ mod tests {
         }
     }
 
-    // Written with escapes so the test stays unambiguous about mark order (`CLAUDE.md` §3.5, E5).
+    // Written with escapes so the test stays unambiguous about mark order (`AGENTS.md` §3.5, E5).
     const WORD_PLAIN: &str = "\u{0628}"; // ب
     const WORD_VOCALIZED: &str = "\u{0628}\u{064E}"; // بَ
     const WORD_SHADDA_ONLY: &str = "\u{0627}\u{0644}\u{0634}\u{0651}\u{0645}\u{0633}"; // الشّمس

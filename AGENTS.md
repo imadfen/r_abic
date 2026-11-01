@@ -1,14 +1,15 @@
-# CLAUDE.md — Agent & Developer Instructions for `r_abic`
+# AGENTS.md — Agent & Developer Instructions for `r_abic`
 
-> **Canonical source of truth** for how this repository is designed, written, tested and shipped.
+> **Canonical ruleset** (`AGENTS.md`) for how this repository is designed, written, tested and shipped.
 > Read this file top-to-bottom before touching code, and re-read the sections relevant to your task
-> before declaring the task finished.
+> before declaring the task finished. It is deliberately **agent-neutral**: every agent *and* every human
+> reads *this* file (§0.5).
 >
-> Short mirrors of the non-negotiables live in `.cursorrules` and `.github/copilot-instructions.md`.
-> If a mirror disagrees with **this** file, this file wins and the mirror must be fixed in the same
-> change.
+> Vendor bindings — condensed copies of the non-negotiables — are `.cursorrules` (Cursor) and
+> `.github/copilot-instructions.md` (Copilot). If a binding disagrees with **this** file, this file wins
+> and the binding must be fixed in the same change.
 >
-> Last reviewed: **2026-11-01** · Ruleset version **v1.1.0** · Toolchain in use: `rustc`/`cargo`
+> Last reviewed: **2026-11-01** · Ruleset version **v1.3.0** · Toolchain in use: `rustc`/`cargo`
 > 1.98.0, `clippy` 0.1.98, `rustfmt` 1.9.0-stable · Edition **2024** · Status: **Phase 0 complete**
 > (`error` + `unicode` landed) · **Releases are automated** from Conventional Commits via release-plz
 > (§8) — versions, tags and `CHANGELOG.md` are never written by hand.
@@ -41,7 +42,7 @@
 When rules conflict, resolve in this order (highest first):
 
 1. **The user's explicit instruction in the current message.**
-2. **This file (`CLAUDE.md`)** — including its principles (`P1`…`P12`), cited by ID in reviews.
+2. **This file (`AGENTS.md`)** — including its principles (`P1`…`P12`), cited by ID in reviews.
 3. **Accepted ADRs** in `docs/adr/` (a later ADR supersedes an earlier one; ADRs may override this
    file's *defaults*, never its *principles* — principles change only by editing this file).
 4. **Documented upstream behaviour** of PyArabic (<https://github.com/linuxscout/pyarabic>) for
@@ -72,6 +73,21 @@ For **every** task, in this order:
 
 Reports and reviews cite rule IDs — e.g. `violates P3`, `per §4.3 edge case E7`,
 `per Appendix B item normalize::strip_tatweel`. Citations make reviews mechanical instead of vibes.
+
+### 0.5 The ruleset file and its bindings
+
+* The canonical ruleset is **`AGENTS.md`** — an **agent-neutral** name, because every agent *and* every
+  human must read the same file and vendor names age badly. Never rename it after a tool, and never fork it
+  per audience: one canonical document with stable §-numbers is what makes rule citations (`§4.3`, `P5`)
+  work at all.
+* **Vendor bindings** are separate and thin: `.cursorrules` (Cursor) and
+  `.github/copilot-instructions.md` (Copilot) carry a condensed copy of the non-negotiables. They must be
+  updated in the same change as this file (§8.3) and they defer to this file on any conflict.
+* `CONTRIBUTING.md` is the human on-ramp (setup → branch → commit → PR → release); it must stay consistent
+  with §5.2, §7 and §8.
+* A vendor file may be **added** as a pointer to this file (one line: "the rules live in `AGENTS.md`") when
+  somebody actually needs it; a second *copy* of the rules must never be created. The repository currently
+  ships no `CLAUDE.md` for exactly that reason — it would be an unused duplicate whose only effect is drift.
 
 ## 1. Project identity & goal
 
@@ -186,7 +202,7 @@ Cited by ID; violating one requires an ADR (and, for `P1`/`P2`/`P5`, an explicit
 
 ```text
 r_abic/
-├── CLAUDE.md                      # canonical rules (this file)
+├── AGENTS.md                      # canonical, agent-neutral ruleset (§0.5)
 ├── .cursorrules                   # short mirror of the non-negotiables
 ├── .github/
 │   ├── copilot-instructions.md    # short mirror of the non-negotiables
@@ -1523,6 +1539,7 @@ Reminder: `cargo test --doc` is not implied by a plain `cargo test --lib`, and c
 
 | Version | Date | Change |
 |---|---|---|
+| **1.3.0** | 2026-11-01 | MINOR: the canonical ruleset was renamed `CLAUDE.md` → **`AGENTS.md`** (no vendor-named copy ships; vendor files are bindings), and §0.5 ("The ruleset file and its bindings") records the naming policy as a rule. All 20 files referencing the old name were updated, including Rustdoc in `src/**` and the workflow comments. Also fixed the header block, which had lagged at v1.1.0. |
 | **1.2.0** | 2026-11-01 | MINOR: added `CONTRIBUTING.md`, the human on-ramp (setup, branch/PR model, commit grammar with the release-impact table, what may and may not be touched, tests/docs expectations, local gate, release flow, troubleshooting, licensing of contributions). New rule: §5.2 requires `CONTRIBUTING.md` to be updated in the same commit as any branch/commit/PR/gate rule change. Also recorded in the §3.1 layout and the §8.3 file table; `README.md` points newcomers at it. |
 | **1.1.0** | 2026-11-01 | MINOR: automated semantic versioning & releases. Adds **§8** (single source of truth, commit→version table, tooling/files, secrets/permissions/branch protection, crates.io publishing policy, release flow, agent red lines, local dry-runs); rewrites **§5.2** with the CI-enforced commit grammar and release-impact rules; adds gate **G9** (§4.8), red lines **16–19** (§5.4), a release-impact item in §5.3/§5.6, **§7.1** (`conventional-commits.yml`) and **§7.2** (`release.yml`); updates §6 Phase 0/4 and Appendix D. Repository: adds `release-plz.toml`, `.github/workflows/release.yml`, `.github/workflows/conventional-commits.yml`. |
 | **1.0.1** | 2026-10-31 | PATCH: clarified §3.1 that `unicode::classify` holds the public `const fn` predicates (as §3.2 already stated) and that `unicode/mod.rs` only wires submodules; `.cursorrules` and `.github/copilot-instructions.md` re-synced. No rule changed. |
@@ -1538,6 +1555,6 @@ a new gate, or a new mandatory test category; `PATCH` = wording, typos, clarifie
 
 ---
 
-*End of `CLAUDE.md` v1.2.0 — if you are an agent reading this at the start of a task, re-read §0.2, the
+*End of `AGENTS.md` v1.3.0 — if you are an agent reading this at the start of a task, re-read §0.2, the
 plan template in §5.1, the edge-case matrix in §4.3 and the gate in §4.8 before you write a single line
 of code or a single test.*

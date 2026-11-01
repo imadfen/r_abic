@@ -2,7 +2,7 @@
 //! Arabic code points as `const char` values.
 //!
 //! Names mirror `pyarabic.araby` / `pyarabic.araby_const` one-to-one so that parity checks stay
-//! greppable (`CLAUDE.md` §3.2); the values are the Unicode code points listed in `CLAUDE.md`
+//! greppable (`AGENTS.md` §3.2); the values are the Unicode code points listed in `AGENTS.md`
 //! Appendix A. Nothing in this module panics or allocates: it is pure data.
 //!
 //! ```
@@ -216,7 +216,7 @@ pub const ALEF_WASLA: char = '\u{0671}';
 pub const FULL_STOP: char = '\u{06D4}';
 /// `BYTE_ORDER_MARK` — `U+FEFF` ZERO WIDTH NO-BREAK SPACE / BOM.
 ///
-/// Preserved by transforms and never dropped implicitly (`CLAUDE.md` §3.4, edge case E13).
+/// Preserved by transforms and never dropped implicitly (`AGENTS.md` §3.4, edge case E13).
 pub const BYTE_ORDER_MARK: char = '\u{FEFF}';
 
 // --------------------------------------------------- formatting (r_abic only)

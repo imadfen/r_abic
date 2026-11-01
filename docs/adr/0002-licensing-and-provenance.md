@@ -39,7 +39,7 @@ upstream does.
 * Parity work is slower than a mechanical port and needs more tests — this is the intended trade-off.
 * Contributors must not paste upstream snippets into issues, PRs or commits; reviewers check this.
 * If a task genuinely requires copying upstream code, the agent **stops and asks the maintainer**
-  (`CLAUDE.md` §2.1) instead of improvising a licence decision.
+  (`AGENTS.md` §2.1) instead of improvising a licence decision.
 
 ## Alternatives considered
 

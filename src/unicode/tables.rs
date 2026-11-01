@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Character classes, mirroring the group constants of `pyarabic.araby_const`.
 //!
-//! Group order mirrors upstream exactly, so parity diffs stay greppable (`CLAUDE.md` §3.2). Every
+//! Group order mirrors upstream exactly, so parity diffs stay greppable (`AGENTS.md` §3.2). Every
 //! group is a `const` slice (no allocation, no lazy initialisation) and every table is validated by
-//! the tests at the bottom of this file (`CLAUDE.md` §3.5).
+//! the tests at the bottom of this file (`AGENTS.md` §3.5).
 //!
 //! ```
 //! use r_abic::unicode::{constants::TATWEEL, tables};
