@@ -37,14 +37,17 @@ protect_breaking_commits = true
 
 # First matching parser wins. The version is computed from `feat`/`fix`/breaking markers only, so
 # `chore`/`ci`/`style`/`test` entries would be noise: they are skipped here on purpose.
+# NOTE: `group` values carry no `#` prefix — release-plz/git-cliff render them as `### <group>`.
+# (Verified against the release PR generated on 2026-11-01, which produced `### ### Added` when the
+# prefix was included.)
 commit_parsers = [
-  { message = "^feat", group = "### Added" },
-  { message = "^fix", group = "### Fixed" },
-  { message = "^perf", group = "### Performance" },
-  { message = "^refactor", group = "### Changed" },
-  { message = "^revert", group = "### Reverted" },
-  { message = "^docs", group = "### Documentation" },
-  { message = "^chore\\(deps\\)", group = "### Dependencies" },
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^revert", group = "Reverted" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^chore\\(deps\\)", group = "Dependencies" },
   { message = "^chore\\(release\\)", skip = true },
   { message = "^chore", skip = true },
   { message = "^ci", skip = true },
