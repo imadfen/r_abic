@@ -1,0 +1,23 @@
+# Line-ending and diff policy for the repository (CLAUDE.md §7, §3.7).
+# Sources are stored with LF only, so Linux/macOS/Windows CI see byte-identical files
+# and `cargo fmt --check` cannot fail because of a checkout on a different platform.
+* text=auto eol=lf
+
+*.rs    text eol=lf
+*.toml  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.lock  text eol=lf
+*.txt   text eol=lf
+LICENSE-MIT   text eol=lf
+LICENSE-APACHE text eol=lf
+
+# Binaries are never normalised.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.pdf  binary
+*.exe  binary

@@ -1,0 +1,14 @@
+[package]
+name = "r_abic"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Arabic text processing library for Rust, inspired by PyArabic"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/imadfen/r_abic"
+documentation = "https://docs.rs/r_abic"
+keywords = ["arabic", "nlp", "text", "unicode", "arabic-text"]
+categories = ["text-processing", "internationalization"]
+
+[dependencies]
