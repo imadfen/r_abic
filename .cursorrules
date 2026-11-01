@@ -1,0 +1,70 @@
+# r_abic — agent rules (mirror of CLAUDE.md)
+
+The canonical, complete instructions live in **`./CLAUDE.md`** (v1.1.0). Read it before acting; when it
+and this file disagree, `CLAUDE.md` wins. This mirror repeats only the non-negotiables.
+
+## Project
+`r_abic` = high-performance, memory-efficient, idiomatic Rust library for Arabic text processing
+(normalization, diacritics/tashkeel, tokenization, unshaping, transliteration, numbers). Behavioural
+parity target: PyArabic (`linuxscout/pyarabic`). Edition 2024; toolchain rustc/cargo 1.98.0.
+
+## Non-negotiables
+1. **Zero runtime dependencies.** `[dependencies]` stays empty; dev-deps need approval + ADR. Never add
+   `regex`, `unicode-normalization`, `once_cell`, `thiserror`.
+2. **Safe Rust only.** `#![forbid(unsafe_code)]`; no `unwrap`/`expect`/`panic!` in `src/` outside tests.
+3. **Borrow first.** `&str` in, `Cow<'_, str>` out, plus `*_into(&mut String)` and iterator APIs.
+4. **Unicode by construction.** `char_indices()` only; never slice at a hand-computed byte offset; every
+   returned range must be a char boundary; never assume 1 byte/char for Arabic.
+5. **Tests before implementation, always.** Red → green → refactor → gate. Never weaken or delete a test
+   to make the gate pass.
+6. **Docs are part of the API.** Every public item: Rustdoc with a runnable `# Examples` doctest, plus
+   `# Errors`/`# Panics`/`# Performance`/`# Unicode`/`# Parity` when they carry information.
+7. **Never copy GPL upstream code/docstrings/tests.** Re-implement from documented behaviour; record
+   intentional differences in `docs/DIVERGENCES.md`.
+8. **Plan first** (goal, parity target, API, files, tests-first list, edge cases, perf, docs, risks, DoD)
+   before writing code; one logical feature per task/commit.
+9. **No claim without evidence.** Run the full gate and paste its output; state "NOT VERIFIED" rather
+   than guessing.
+
+## Mandatory quality gate before declaring a task done
+```powershell
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+cargo test --doc --all-features
+$env:RUSTDOCFLAGS = '-D warnings'; cargo doc --no-deps --all-features; Remove-Item Env:\RUSTDOCFLAGS
+cargo bench --no-run
+cargo tree -e normal --depth 1
+```
+
+## Commits & releases (CI-enforced — CLAUDE.md §5.2, §8)
+
+Every commit subject **and** PR title must be a Conventional Commit:
+`^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(scope\))?!?: <subject ≤ 72 chars>`
+(e.g. `feat(normalize): add strip_tatweel`). The PR title becomes the squash-merge subject.
+
+The next version is **computed from those messages** by release-plz, never typed by hand:
+
+| Commit | Bump |
+|---|---|
+| `feat:` | MINOR |
+| `fix:` | PATCH |
+| `!` or a `BREAKING CHANGE:` footer | MAJOR (MINOR while the crate is `0.x`) |
+| `docs:`, `style:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`, `chore:` | no release on their own |
+
+* Do **not** edit `[package] version` in `Cargo.toml`, do **not** create/move/delete git tags, do **not**
+  hand-write a released `CHANGELOG.md` section (only `## [Unreleased]` is hand-editable), do **not**
+  publish to crates.io. release-plz owns all of it (`release-plz.toml`, `.github/workflows/release.yml`).
+* State the release impact (`none`/`patch`/`minor`/`major`) in your completion report.
+* Publishing is intentionally disabled (`publish = false`); `cargo publish --dry-run` is the only
+  publishing command you may run.
+
+## Details worth knowing up front
+* Upstream spelling quirks kept for parity: `strip_lastharaka` (not `strip_last_haraka`),
+  `delimite_language` (upstream typo), `unshaping_word`/`unshaping_line`/`unshaping_text`.
+* Upstream's `unshaping_*` also **reverses** text; ours does not (reversal is a separate function).
+* Tatweel `U+0640` is a joiner, not a letter or ḥaraka; a tatweel-only run is never a word.
+* `strip_tashkeel` removes shadda; `strip_harakat` keeps it; `strip_diacritics` also removes small
+  letters (`U+0670`, `U+06E5`, `U+06E6`).
+* We do **not** implement NFC/NFD: marks are never reordered — say so in `# Unicode`.
+* Out of scope: `named*`, `propernouns.py`, `stack.py`, `arabrepr.py` (data-heavy / Python-only).
