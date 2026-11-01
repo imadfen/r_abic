@@ -1,6 +1,6 @@
 # Copilot / AI assistant instructions for `r_abic`
 
-> **Canonical source:** [`CLAUDE.md`](../CLAUDE.md) (v1.1.0) at the repository root. Read it fully before
+> **Canonical source:** [`CLAUDE.md`](../CLAUDE.md) (v1.2.0) at the repository root. Read it fully before
 > suggesting or writing code. This file repeats only the rules that must never be violated; if there is
 > any conflict, `CLAUDE.md` is authoritative.
 
