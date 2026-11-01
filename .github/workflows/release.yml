@@ -1,4 +1,4 @@
-# Automated semantic versioning and GitHub releases — see CLAUDE.md §8.
+# Automated semantic versioning and GitHub releases — see AGENTS.md §8.
 #
 # Two jobs, following the official release-plz pattern
 # (https://release-plz.dev/docs/github/quickstart):
@@ -46,10 +46,10 @@ jobs:
         with:
           command: release
         env:
-          # A PAT is recommended (CLAUDE.md §8.4): events created with GITHUB_TOKEN do not
+          # A PAT is recommended (AGENTS.md §8.4): events created with GITHUB_TOKEN do not
           # trigger other workflows, so release-PR CI would not run.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
-          # Only used once release-plz.toml sets `publish = true` (CLAUDE.md §8.5).
+          # Only used once release-plz.toml sets `publish = true` (AGENTS.md §8.5).
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release-plz-pr:

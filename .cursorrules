@@ -1,7 +1,7 @@
-# r_abic — agent rules (mirror of CLAUDE.md)
+# r_abic — agent rules (Cursor binding to AGENTS.md)
 
-The canonical, complete instructions live in **`./CLAUDE.md`** (v1.2.0). Read it before acting; when it
-and this file disagree, `CLAUDE.md` wins. This mirror repeats only the non-negotiables.
+The canonical, complete ruleset is **`./AGENTS.md`** (v1.3.0, agent-neutral). Read it before acting; when
+it and this file disagree, `AGENTS.md` wins. This binding repeats only the non-negotiables.
 
 ## Project
 `r_abic` = high-performance, memory-efficient, idiomatic Rust library for Arabic text processing
@@ -37,7 +37,7 @@ cargo bench --no-run
 cargo tree -e normal --depth 1
 ```
 
-## Commits & releases (CI-enforced — CLAUDE.md §5.2, §8)
+## Commits & releases (CI-enforced — AGENTS.md §5.2, §8)
 
 Every commit subject **and** PR title must be a Conventional Commit:
 `^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(scope\))?!?: <subject ≤ 72 chars>`

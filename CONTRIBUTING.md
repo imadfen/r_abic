@@ -3,9 +3,10 @@
 Thanks for helping build this. This document is the **human on-ramp**: setup, branches, commits, pull
 requests, and what happens after your PR is merged.
 
-The engineering rules live in [`CLAUDE.md`](CLAUDE.md) — that file is canonical for agents **and**
-humans. If anything here contradicts it, `CLAUDE.md` wins and this file must be fixed in the same
-change.
+The engineering rules live in [`AGENTS.md`](AGENTS.md) — that file is canonical for agents **and**
+humans. If anything here contradicts it, `AGENTS.md` wins and this file must be fixed in the same
+change. It is deliberately not named after any tool, so that every agent and every human reads the same
+file; the vendor files listed in §6 are thin bindings that defer to it.
 
 ---
 
@@ -21,7 +22,7 @@ everything:
 * **Provenance.** PyArabic is GPL-licensed; `r_abic` is MIT/Apache-2.0. **Never paste PyArabic source
   code, docstrings, data tables or tests into this repository** — not even "just as a reference".
   Re-derive behaviour from the documented API and the Unicode Standard, and record intentional
-  differences in `docs/DIVERGENCES.md` (`CLAUDE.md` §2.1).
+  differences in `docs/DIVERGENCES.md` (`AGENTS.md` §2.1).
 
 Two more that reviewers will hold you to:
 
@@ -126,7 +127,7 @@ hand**:
 the wrong version. Write the title as the commit you want in the history.
 
 A **user-visible breaking change** needs all three: the `!` marker, a `BREAKING CHANGE:` footer, and an
-ADR in `docs/adr/` (`CLAUDE.md` §3.3, §8.2).
+ADR in `docs/adr/` (`AGENTS.md` §3.3, §8.2).
 
 ## 5. Opening a pull request
 
@@ -151,9 +152,9 @@ focused PRs get merged.
 
 | Path | Rule |
 |---|---|
-| `src/**`, `tests/**`, `benches/**`, `examples/**` | yours to change, following `CLAUDE.md` §3 |
+| `src/**`, `tests/**`, `benches/**`, `examples/**` | yours to change, following `AGENTS.md` §3 |
 | `CONTRIBUTING.md`, `README.md`, `docs/PARITY.md`, `docs/DIVERGENCES.md` | yours to change; keep them true |
-| `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` | propose changes, but the owner reviews them closely — they govern every future contribution |
+| `AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md` | propose changes, but the owner reviews them closely — they govern every future contribution |
 | `docs/adr/**` | you may **add** ADRs; never edit an accepted one (add a superseding ADR instead) |
 | `CHANGELOG.md` | release-plz owns the released sections; only `[Unreleased]` is hand-editable |
 | `Cargo.toml` | never the `[package] version` field; `[dependencies]` stays empty; dev-deps need the owner + an ADR |
@@ -162,10 +163,10 @@ focused PRs get merged.
 
 ## 7. Tests and documentation expectations
 
-Work **test-first** (`CLAUDE.md` §4.1): write the failing test, show it failing, then implement. Reviewers
+Work **test-first** (`AGENTS.md` §4.1): write the failing test, show it failing, then implement. Reviewers
 look at the tests as much as the code.
 
-* **Edge cases are named, not improvised.** `CLAUDE.md` §4.3 lists the mandatory matrix; reference the ID
+* **Edge cases are named, not improvised.** `AGENTS.md` §4.3 lists the mandatory matrix; reference the ID
   in the test name or a comment. For text transforms that usually means at minimum:
 
   | ID | Case |

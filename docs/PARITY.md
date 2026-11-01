@@ -1,7 +1,7 @@
 # PyArabic parity tracker
 
 Living tracker for behavioural parity with PyArabic
-(`linuxscout/pyarabic`, `master` as observed on 2026-10-31). Rules and formats: `CLAUDE.md` §5.5.
+(`linuxscout/pyarabic`, `master` as observed on 2026-10-31). Rules and formats: `AGENTS.md` §5.5.
 
 **Statuses:** `todo` · `wip` · `done` · `divergent` · `out-of-scope`.
 `TBD` in a note means "upstream semantics not verified yet" — such a symbol must never be marked
@@ -162,4 +162,4 @@ Living tracker for behavioural parity with PyArabic
 
 **How to update this file:** change the status of the affected row in the same commit as the code, add
 the `D-00N` reference when the row becomes `divergent`, and never mark a row `done` without a test that
-pins the behaviour (`CLAUDE.md` §5.5).
+pins the behaviour (`AGENTS.md` §5.5).

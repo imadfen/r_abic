@@ -1,4 +1,4 @@
-# Line-ending and diff policy for the repository (CLAUDE.md §7, §3.7).
+# Line-ending and diff policy for the repository (AGENTS.md §7, §3.7).
 # Sources are stored with LF only, so Linux/macOS/Windows CI see byte-identical files
 # and `cargo fmt --check` cannot fail because of a checkout on a different platform.
 * text=auto eol=lf

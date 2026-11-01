@@ -2,7 +2,7 @@
 //! The crate's single error type.
 //!
 //! `r_abic` deliberately uses one small, hand-written error enum instead of a `thiserror` derive: the
-//! error surface is tiny and the crate ships **zero dependencies** (`CLAUDE.md` §2.2, §3.4).
+//! error surface is tiny and the crate ships **zero dependencies** (`AGENTS.md` §2.2, §3.4).
 //!
 //! The enum is `#[non_exhaustive]`, so new variants may be added in minor releases. Match it with a
 //! `_ =>` arm:
@@ -30,7 +30,7 @@ pub enum Error {
     /// The function is undefined for empty input (for example `soundex("")`).
     ///
     /// Transforms such as `strip_*` never return this: empty input is a valid input there and is
-    /// returned unchanged (`CLAUDE.md` §3.4).
+    /// returned unchanged (`AGENTS.md` §3.4).
     EmptyInput,
     /// Encoded tashkeel could not be decoded.
     ///
