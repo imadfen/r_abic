@@ -1,6 +1,6 @@
 # r_abic — agent rules (Cursor binding to AGENTS.md)
 
-The canonical, complete ruleset is **`./AGENTS.md`** (v1.4.0, agent-neutral). Read it before acting; when
+The canonical, complete ruleset is **`./AGENTS.md`** (v1.4.2, agent-neutral). Read it before acting; when
 it and this file disagree, `AGENTS.md` wins. This binding repeats only the non-negotiables.
 
 ## Project

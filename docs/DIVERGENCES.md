@@ -23,8 +23,10 @@ Statuses: `intentional, permanent` · `intentional, temporary` · `needs maintai
 
 ## D-002 — `is_arabicword` uses a strict definition
 
-* **Upstream:** `araby.is_arabicword(word)` documents "no spaces, digits and punctuation" but then
-  returns "True if all characters are in the Arabic block", which admits digits and punctuation.
+* **Upstream:** `araby.is_arabicword(word)` accepts `U+0600–U+0652` plus the lam-alef ligature forms and
+  then applies positional heuristics (the first char must be neither a ḥaraka nor `WAW_HAMZA`/
+  `YEH_HAMZA`; `ALEF_MAKSURA` and `TEH_MARBUTA` must be last; no doubled shadda), so digits and
+  punctuation inside that range pass. Verified against a local `tools/oracle/` checkout (2026-11-03).
 * **r_abic:** `unicode::classify::is_arabicword` returns `true` only for a **non-empty** string made
   exclusively of base letters, `TASHKEEL` marks and `TATWEEL`. Spaces, digits, punctuation,
   presentation forms and formatting code points all yield `false`.
@@ -32,18 +34,6 @@ Statuses: `intentional, permanent` · `intentional, temporary` · `needs maintai
   tokenizer of Phase 1, which must be able to rely on it).
 * **Pinned by:** `is_arabicword_requires_letters_marks_or_tatweel_only`.
 * **Status:** intentional, permanent.
-
-## D-003 — `is_vocalized` counts a lone shadda as vocalization
-
-* **Upstream:** `araby.isVocalized(word)` / `is_vocalized(word)` — the docstring says "checks if the
-  word is vocalized" without specifying whether shadda alone qualifies.
-* **r_abic:** `unicode::classify::is_vocalized` returns `true` when the word contains any `TASHKEEL`
-  mark, i.e. a ḥaraka **or** a shadda. `has_harakat` is provided for the stricter question.
-* **Rationale:** a shadda is a diacritic; treating it as "not vocalized" would make `الشّمس` and
-  `الشمس` indistinguishable.
-* **Pinned by:** `string_helpers_detect_marks`.
-* **Status:** needs maintainer confirmation (verify against upstream once a local checkout is
-  available, then promote to permanent or fix).
 
 ## D-004 — legacy camelCase aliases are not ported
 
@@ -70,3 +60,34 @@ Statuses: `intentional, permanent` · `intentional, temporary` · `needs maintai
   the upstream list.
 * **Pinned by:** `ligature_predicate_covers_all_eight_lam_alef_forms`.
 * **Status:** intentional, permanent.
+
+## D-006 — `is_hamza` matches the bare hamza only
+
+- **Upstream:** `araby.is_hamza(archar)` is `archar in HAMZAT`, so it also returns `true` for the
+  carriers (`WAW_HAMZA`, `YEH_HAMZA`, `ALEF_HAMZA_ABOVE`, `ALEF_HAMZA_BELOW`) and for the combining
+  `HAMZA_ABOVE`/`HAMZA_BELOW`.
+- **r_abic:** `unicode::classify::is_hamza(c)` is `c == HAMZA` (`U+0621`). Carriers are letters and are
+  recognised by `is_arabic_letter`; the combining forms have the dedicated additions
+  `is_hamza_above`/`is_hamza_below`.
+- **Rationale:** "is this character the hamza letter" and "is this character one of the seven
+  hamza-bearing forms" are different questions. Collapsing them (as upstream does) mixes a letter with
+  its carriers and with combining marks, which is unusable for a classifier that feeds the tokenizer.
+- **Pinned by:** `is_hamza_and_is_arabicrange_are_stricter_than_upstream`.
+- **Status:** intentional, permanent.
+
+## D-007 — `is_arabicrange` covers only the main Arabic block
+
+- **Upstream:** `araby.is_arabicrange(text)` rejects a character unless it lies in `U+0600–U+06FF`,
+  `U+0750–U+077F` (Arabic Supplement), `U+FB50–U+FDFF` (Presentation Forms-A) or `U+FE70–U+FEFF`
+  (Presentation Forms-B); empty input is vacuously `true`.
+- **r_abic:** `unicode::classify::is_arabicrange` accepts only `U+0600–U+06FF`. The other ranges are
+  classified by purpose instead (`is_ligature` for the lam-alef pairs, `unshape` for presentation
+  forms) and are documented as pass-through for the Phase 1 transforms.
+- **Rationale:** one predicate cannot serve both "is this text plain Arabic letters and marks" and
+  "does this text contain presentation forms"; the tokenizer needs the former, the de-shaper the
+  latter.
+- **Pinned by:** `is_hamza_and_is_arabicrange_are_stricter_than_upstream`.
+- **Note:** alignment candidate, not yet settled — mirroring upstream's four ranges would make
+  `is_arabicrange` return `true` for text that `unshape` is meant to rewrite. Changing the predicate
+  needs an ADR plus a `!` commit, so it stays recorded here.
+- **Status:** intentional, temporary.

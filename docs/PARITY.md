@@ -33,27 +33,44 @@ Living tracker for behavioural parity with PyArabic
 
 ### 1.1 Letter predicates (`araby.is_*`)
 
+Everything below was re-verified on 2026-11-03 against a local `tools/oracle/` checkout of upstream
+`master`. Upstream implements each predicate as a plain membership test over the class tuples
+(`is_hamza` → `HAMZAT`, `is_alef` → `ALEFAT`, `is_yehlike` → `YEHLIKE`, `is_wawlike` → `WAWLIKE`,
+`is_teh` → `TEHLIKE`, `is_small` → `SMALL`, `is_weak` → `WEAK`, `is_moon` → `MOON`, `is_sun` → `SUN`,
+`is_tanwin` → `TANWIN`, `is_haraka` → `HARAKAT`, `is_shortharaka` → `SHORTHARAKAT`, `is_tashkeel` →
+`TASHKEEL`), and `is_shadda`/`is_sukun`/`is_tatweel` are plain equality with their constant.
+
 | Upstream symbol | `r_abic` symbol | Status | Notes |
 |---|---|---|---|
-| `is_hamza`, `is_hamza_above`, `is_hamza_below` | `unicode::classify::is_hamza*` | done | exact upstream spelling TBD |
-| `is_vowel` | `unicode::classify::is_vowel` | done | alias of `is_haraka`, verified against `HARAKAT` |
-| `is_shadda`, `is_sukun`, `is_tatweel` | `unicode::classify::is_*` | done | |
+| `is_haraka` | `unicode::classify::is_haraka` | done | verified: the 7 `HARAKAT` marks, shadda excluded |
+| `is_shortharaka` | `unicode::classify::is_short_haraka` | done | verified; upstream spelling kept as the doc alias |
+| `is_tanwin` | `unicode::classify::is_tanwin` | done | verified: the three tanwīn marks |
+| `is_tashkeel` | `unicode::classify::is_tashkeel` | done | verified: `HARAKAT` + shadda |
+| `is_shadda`, `is_sukun`, `is_tatweel` | `unicode::classify::is_{shadda,sukun,tatweel}` | done | verified: equality with the constant, identical behaviour |
+| `has_shadda` | `unicode::classify::has_shadda` | done | verified |
+| `is_hamza` | `unicode::classify::is_hamza` | divergent | D-006: upstream accepts all 7 `HAMZAT` forms, i.e. the carriers too; ours tests `U+0621` only |
 | `is_ligature` | `unicode::classify::is_ligature` | divergent | D-005: accepts all eight `U+FEF5..=U+FEFC` forms, not only the four isolated ones |
-| `is_letter` | `unicode::classify::is_arabic_letter` | done | exact `LETTERS` membership over the Arabic block (tested exhaustively) |
-| `is_arabicrange` | `unicode::classify::is_arabicrange` | done | vacuous `true` for empty input, as upstream |
-| `is_arabicword` | `unicode::classify::is_arabicword` | divergent | D-002: strict letters/marks/tatweel definition |
-| `is_arabicstring` | — | todo | TBD: upstream semantics |
-| `has_shadda` | `unicode::classify::has_shadda` | done | |
-| `is_vocalized` | `unicode::classify::is_vocalized` | divergent | D-003: shadda alone counts (needs confirmation) |
+| `is_arabicrange` | `unicode::classify::is_arabicrange` | divergent | D-007: upstream accepts 4 ranges (`U+0600–U+06FF`, `U+0750–U+077F`, `U+FB50–U+FDFF`, `U+FE70–U+FEFF`); ours only the main block. Vacuous `true` for empty input, as upstream |
+| `is_arabicword` | `unicode::classify::is_arabicword` | divergent | D-002: upstream accepts `U+0600–U+0652` ∪ the lam-alef forms plus positional heuristics (first char not a ḥaraka/`WAW_HAMZA`/`YEH_HAMZA`, alef maksura last, teh marbuta last, no doubled shadda); ours requires letters/marks/tatweel only |
+| `is_vocalized` | `unicode::classify::is_vocalized` | done | **verified equivalent**: upstream's lone-shadda word does count (its `is_tashkeel` includes shadda), so the former D-003 divergence was withdrawn |
+| `is_vocalizedtext` | `unicode::classify::has_harakat` | done | verified: upstream searches `HARAKAT` only — a lone shadda does **not** count |
+| `is_arabicstring` | — | todo | verified: rejects any char outside `U+0600–U+0652` ∪ the 3 lam-alef forms ∪ whitespace ∪ Unicode decimal digits; vacuous `true` for empty input |
+| `is_alef`, `is_yehlike`, `is_wawlike`, `is_teh`, `is_small`, `is_weak`, `is_moon`, `is_sun` | — | todo | pure table membership; the `unicode::tables` groups themselves are `done` |
+| `first_char`, `second_char`, `last_char`, `secondlast_char` | — | todo | trivial accessors; decide during Phase 1 whether to expose them |
+| `order`, `name` | `unicode::tables::alphabetic_order`, `unicode::names` (Phase 3) | done / todo | `ALPHABETIC_ORDER` / `NAMES` lookups |
+| `arabicrange()` (a string of the whole block) | — | out-of-scope | exists only to build regexes; predicates replace it (D-001) |
 | `hasShadda`, `isVocalized`, `isArabicrange`, `isArabicword` (legacy camelCase) | — | out-of-scope | D-004 |
 
 ### 1.2 r_abic additions (no upstream equivalent)
 
 | `r_abic` symbol | Status | Notes |
 |---|---|---|
-| `unicode::classify::is_haraka`, `is_tanwin`, `is_short_haraka`, `is_tashkeel` | done | explicit classes for the Phase 1 transforms |
+| `unicode::classify::is_vowel` | done | alias of `is_haraka`; **upstream has no `is_vowel`** |
+| `unicode::classify::is_hamza_above`, `is_hamza_below` | done | **upstream has no such symbols**; upstream's `is_hamza` covers the combining hamzas |
+| `unicode::classify::is_arabic_letter` | done | our name for exact `LETTERS` membership; **upstream has no `is_letter`/`is_arabicletter`** — callers test the `LETTERS` tuple themselves |
+| `unicode::classify::has_harakat`, `has_tashkeel` | done | `has_harakat` is the exact match for upstream `is_vocalizedtext` |
 | `unicode::classify::is_arabic_block_char`, `is_arabic_indic_digit`, `is_extended_arabic_indic_digit`, `is_arabic_digit` | done | needed by the tokenizer and `normalize_digits` |
-| `unicode::classify::is_formatting`, `unicode::classify::has_harakat`, `has_tashkeel` | done | ZWJ/ZWNJ/BOM/RTL marks (E11–E13) |
+| `unicode::classify::is_formatting` | done | ZWJ/ZWNJ/BOM/RTL marks (E11–E13) |
 | `unicode::constants::{ZERO_WIDTH_JOINER, ZERO_WIDTH_NON_JOINER, LEFT_TO_RIGHT_MARK, RIGHT_TO_LEFT_MARK, ARABIC_LETTER_MARK}` | done | `r_abic` additions |
 | `Error`, `Result` | done | Phase 0; `UnsupportedConversion` arrives with `trans` |
 
@@ -64,28 +81,32 @@ Living tracker for behavioural parity with PyArabic
 | Upstream symbol | `r_abic` symbol | Status | Notes |
 |---|---|---|---|
 | `strip_tashkeel(text)` | `normalize::strip_tashkeel` (+ `strip_tashkeel_into`) | done | `Cow` fast path + `_into` buffer reuse; pinned by 10 unit + 4 property + 8 integration tests + 3 doctests; bench `benches/normalize.rs` |
-| `strip_harakat(text)` | `normalize::strip_harakat` | todo | keeps shadda |
-| `strip_lastharaka(text)` | `normalize::strip_lastharaka` | todo | upstream spelling kept, `#[doc(alias)]` |
-| `strip_tatweel(text)` | `normalize::strip_tatweel` | todo | |
-| `strip_shadda(text)` | `normalize::strip_shadda` | todo | |
-| `strip_diacritics(text)` | `normalize::strip_diacritics` | todo | ḥarakāt + small letters |
-| `reduce_tashkeel(text)` | `normalize::reduce_tashkeel` | todo | TBD: exact "evident case" rules |
-| `reduce_tatweel(text)` | `normalize::reduce_tatweel` | todo | |
-| `normalize_hamza(text, method)` | `normalize::normalize_hamza` | todo | `HamzaMethod::{Remove, Tasheel}`; TBD: parameter semantics |
+| `strip_harakat(text)` | `normalize::strip_harakat` | todo | verified: removes the 7 `HARAKAT` marks and **keeps shadda**; upstream guards the work with `is_vocalized` |
+| `strip_lastharaka(text)` | `normalize::strip_lastharaka` | todo | verified: removes **every `TANWIN` mark plus one trailing `HARAKAT`** (`[HARAKAT]$|[TANWIN]`), guarded by `is_vocalized`; upstream spelling kept, `#[doc(alias = "strip_last_haraka")]` |
+| `strip_tatweel(text)` | `normalize::strip_tatweel` | todo | verified: plain removal of `U+0640` |
+| `strip_shadda(text)` | `normalize::strip_shadda` | todo | verified: plain removal of `U+0651` (no `is_vocalized` guard) |
+| `strip_small(text)` | `normalize::strip_small` | todo | **new row**: removes the `SMALL` class — `U+0670`, `U+06E5`, `U+06E6` |
+| `strip_diacritics(text)` | `normalize::strip_diacritics` | todo | verified: upstream removes **every nonspacing mark (`Mn`) in `U+0600–U+06FE`**, computed from `unicodedata.category` — that is tashkeel + `U+0653`–`U+0655` + `U+0670` + the Qur'anic/extended marks, and it does **not** include `U+06E5`/`U+06E6` (category `Lm`). **Open decision:** mirror the category rule (needs a hand-written `Mn` range table, no dependency) or curate our own class and record a divergence |
+| `reduce_tashkeel(text)` | `normalize::reduce_tashkeel` | todo | verified: six ordered rules — (1) drop every `FATHA`/`SUKUN` not preceded by `WAW`/`YEH`, (2) drop `DAMMA` before `WAW`, (3) drop `KASRA` before `YEH`, (4) drop `FATHA` before `ALEF`, (5) drop `FATHA` after a word-initial `WAW`/`YEH`, (6) drop `KASRA` after `ALEF_HAMZA_BELOW` |
+| `normalize_teh(text)` | `normalize::normalize_teh` | todo | **new row**: `TEH_MARBUTA` → `HEH` (upstream keeps this apart from `normalize_spellerrors`) |
+| `normalize_alef(text)` | `normalize::normalize_alef` | todo | **new row**: every `ALEFAT` form → `ALEF`, with the `SMALL_ALEF`↔`ALEF_MAKSURA` special cases removed first |
+| `normalize_hamza(word, method="uniform")` | `normalize::normalize_hamza` | todo | verified against a local `araby.py` (`tools/oracle/`, dev-only): `HamzaMethod::{Uniform, Tasheel}`; `tasheel` folds each hamza onto its carrier (alef-madda/alef-hamza/combining hamzas → `ALEF`, `WAW_HAMZA` → `WAW`, `YEH_HAMZA` → `YEH`), `uniform` (the default) maps the whole `HAMZAT` class → `HAMZA` and expands `ALEF_MADDA` → `HAMZA`+`HAMZA` with a leading-madda special case; upstream is *word*-scoped (`word[1]`/`word[2]` indexing) and its docstring wrongly claims it also simplifies lam-alef. `normalize.py`'s no-argument twin folds the alef family to `ALEF` first, so the two upstream modules disagree — we keep one canonical location and pin the mirrored semantics with tests |
 | `normalize_ligature(text)` | `normalize::normalize_ligature` | todo | |
 | `normalize_lamalef(text)` | `normalize::normalize_lamalef` | todo | alias of `normalize_ligature` |
 | `normalize_spellerrors(text)` | `normalize::normalize_spellerrors` | todo | teh marbuta → heh, alef maksura → yeh |
 | `normalize_searchtext(text)` | `normalize::normalize_searchtext` | todo | pipeline order is part of the contract |
-| `fix_spaces(text)` | `normalize::fix_spaces` | todo | TBD: owner module upstream |
-| `autocorrect(text)` | `normalize::autocorrect` | todo | one documented rule per behaviour |
+| `fix_spaces(text)` | `tokenize::fix_spaces` | todo | verified: upstream defines it in `araby` (`araby.py:1434`) and it collapses runs of spaces outside words; our home is `tokenize` per `AGENTS.md` §3.2 (corrected — was listed under `normalize`) |
+| `autocorrect(text)` | `tokenize::autocorrect` | todo | verified: six documented regex rules (leading/isolated ḥarakāt, tanwīn on alef, misplaced sukūn, ḥaraka before shadda, repeated ḥarakāt) |
+| `waznlike(word1, wazn, extract_root=False)` | `diacritics::waznlike` | todo | **new row**: compares a word against a vocalization pattern |
+| `shaddalike(partial, fully)` | `diacritics::shaddalike` | todo | **new row**: compares two words ignoring shadda placement |
 
 ## 3. `araby` vocalization → `diacritics` (Phase 1–2)
 
 | Upstream symbol | `r_abic` symbol | Status | Notes |
 |---|---|---|---|
-| `separate(word, extract=False)` | `diacritics::separate` | todo | `(letters, marks)` |
+| `separate(word, extract_shadda=False)` | `diacritics::separate` | todo | verified: the flag is called `extract_shadda` (not `extract`) and, when set, the call returns a third element for the shadda |
 | `joint(letters, marks)` | `diacritics::joint` | todo | mismatch → `Error::TashkeelLengthMismatch` |
-| `vocalizedlike(word1, word2, extract=False)` | `diacritics::vocalizedlike` | todo | TBD: signature |
+| `vocalizedlike(word1, word2)` | `diacritics::vocalizedlike` | todo | verified: exactly two parameters — upstream has no `extract` flag |
 | `vocalized_similarity(word1, word2)` | `diacritics::vocalized_similarity` | todo | score semantics documented |
 | `encode_tashkeel(word, method)` | `diacritics::encode_tashkeel` | todo | Phase 2, N3 |
 | `decode_tashkeel(word, marks, method)` | `diacritics::decode_tashkeel` | todo | Phase 2, N3 |
