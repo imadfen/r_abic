@@ -9,7 +9,7 @@
 > `.github/copilot-instructions.md` (Copilot). If a binding disagrees with **this** file, this file wins
 > and the binding must be fixed in the same change.
 >
-> Last reviewed: **2026-11-03** · Ruleset version **v1.4.1** · Toolchain in use: `rustc`/`cargo`
+> Last reviewed: **2026-11-03** · Ruleset version **v1.4.2** · Toolchain in use: `rustc`/`cargo`
 > 1.98.0, `clippy` 0.1.98, `rustfmt` 1.9.0-stable · Edition **2024** · Status: **Phase 1 in progress**
 > (`error`, `unicode` and `normalize::strip_tashkeel` landed) · **Releases are automated** from Conventional Commits via release-plz
 > (§8) — versions, tags and `CHANGELOG.md` are never written by hand.
@@ -249,9 +249,9 @@ module (never a `pub(crate)` dumping ground), and no `mod.rs` sprawl except the 
 | PyArabic source | Reference symbols (verified against upstream `master`, 2026-10-31) | `r_abic` module | Notes |
 |---|---|---|---|
 | `araby.py`, `araby_const.py` (constants) | `COMMA`…`BYTE_ORDER_MARK`, `HARAKAT`, `TASHKEEL`, `SHORTHARAKAT`, `TANWIN`, `NOT_DEF_HARAKA`, `LIGUATURES`, `HAMZAT`, `ALEFAT`, `LETTERS`, `NUMBERS_EAST/WEST/PERS`, `MOON`, `SUN`, `WEAK`, `YEHLIKE`, `WAWLIKE`, `TEHLIKE`, `SMALL`, `ALPHABETIC_ORDER`, `NAMES` | `unicode::constants`, `unicode::tables` | `pub const char` per code point + `pub const &[char]` groups; matching uses sorted slices/binary search, never per-call allocation |
-| `araby.py` (letter predicates) | `is_hamza`, `is_hamza_above`, `is_hamza_below`, `is_vowel`, `is_shadda`, `is_sukun`, `is_tatweel`, `is_ligature`, `is_letter`, `is_arabicrange`, `is_arabicword`, `has_shadda`, `is_vocalized` | `unicode::classify` | keep the `is_*`/`has_*` snake_case names; the legacy camelCase aliases (`hasShadda`, `isVocalized`, `isArabicword`) are **not** ported → `DIVERGENCES.md` |
-| `araby.py` (normalization) | `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`, `strip_diacritics`, `normalize_hamza`, `normalize_ligature`, `normalize_spellerrors`, `reduce_tashkeel`, `reduce_tatweel` | `normalize` | note upstream spelling **`strip_lastharaka`** (not `…_haraka`): keep it for parity and add `#[doc(alias = "strip_last_haraka")]` |
-| `araby.py` (vocalization) | `separate`, `joint`, `vocalizedlike`, `vocalized_similarity` | `diacritics` | `separate`/`joint` are the (letters, marks) core used by the tashkeel codec |
+| `araby.py` (letter predicates) | `is_haraka`, `is_shortharaka`, `is_tanwin`, `is_tashkeel`, `is_shadda`, `is_sukun`, `is_tatweel`, `is_ligature`, `is_hamza`, `is_alef`, `is_yehlike`, `is_wawlike`, `is_teh`, `is_small`, `is_weak`, `is_moon`, `is_sun`, `is_arabicrange`, `is_arabicstring`, `is_arabicword`, `has_shadda`, `is_vocalized`, `is_vocalizedtext`, `first_char`/`second_char`/`last_char`/`secondlast_char`, `order`, `name`, `arabicrange` | `unicode::classify` (+ `tables::alphabetic_order`, `unicode::names`) | verified against the oracle (2026-11-03): upstream has **no** `is_vowel`, `is_letter`, `is_arabicletter` or `is_hamza_above/below` — those are r_abic additions (`PARITY.md` §1.2). Keep the `is_*`/`has_*` snake_case names; the legacy camelCase aliases (`hasShadda`, `isVocalized`, `isArabicword`) are **not** ported → `DIVERGENCES.md` |
+| `araby.py` (normalization) | `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`, `strip_small`, `strip_diacritics`, `normalize_ligature`, `normalize_hamza`, `normalize_teh`, `normalize_alef`, `reduce_tashkeel` | `normalize` | verified against the oracle (2026-11-03): upstream master has **no `reduce_tatweel`**, and `normalize_spellerrors` lives in `normalize.py`; note upstream spelling **`strip_lastharaka`** (not `…_haraka`): keep it for parity and add `#[doc(alias = "strip_last_haraka")]` |
+| `araby.py` (vocalization) | `separate(word, extract_shadda=False)`, `joint`, `vocalizedlike`, `waznlike`, `shaddalike`, `vocalized_similarity` | `diacritics` | `separate`/`joint` are the (letters, marks) core used by the tashkeel codec; **verified** signatures are recorded in `PARITY.md` §3 (the flag is `extract_shadda`, and `vocalizedlike` takes exactly two arguments) |
 | `araby.py` (tokenization) | `tokenize`, `sentence_tokenize`, `tokenize_with_location`, `fix_spaces`, `autocorrect`, `spellit` | `tokenize` | we add an allocation-free `Tokenizer` iterator and `Token { text: &str, start, end, kind }`; `spellit` needs name tables (phase 3) |
 | `araby.py` (misc) | `name(char)`, `glyph(char)` | `unicode::names` | static tables; phase 3 |
 | `kalima.py` | `Kalima` (`letters`, `marks`, `word`, `has_shadda`, `is_vocalized`, `is_arabic`) | `kalima::Word` | explicit accessors instead of `Index`/`Deref` tricks; `Eq`/`Hash` over `(letters, marks)` |
@@ -624,7 +624,7 @@ Mandatory properties (where applicable to the module under test):
    `text.is_char_boundary(start)` / `(…end)`.
 2. **Totality** — a few thousand generated inputs drive every public function without a panic.
 3. **Idempotence** — `f(f(x)) == f(x)` for `strip_*`, `normalize_*`, `to_base_letters`,
-   `reduce_tatweel`.
+   `reduce_tashkeel`.
 4. **No character creation/destruction** — `strip_*` never adds characters; `strip_harakat` keeps
    shadda while `strip_tashkeel` removes it; `normalize_ligature(x).chars().count() >= x.chars().count()`.
 5. **Round-trips** — `decode_tashkeel(x, encode_tashkeel(x).1) == x`; `joint(separate(w)) == w`; digit
@@ -766,9 +766,9 @@ confirmation first.
   "implement the whole `normalize` module".
 * Recommended landing order per area (each its own commit-sized task):
   1. `unicode`: constants, predicates, table-validation tests
-  2. `normalize`: `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`, `strip_diacritics`
-  3. `normalize`: `normalize_hamza`, `normalize_ligature`/`normalize_lamalef`, `normalize_spellerrors`, `normalize_searchtext`
-  4. `normalize`: `reduce_tashkeel`, `reduce_tatweel`, `autocorrect`, `fix_spaces`
+  2. `normalize`: `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`, `strip_small`, `strip_diacritics`
+  3. `normalize`: `normalize_hamza`, `normalize_ligature`/`normalize_lamalef`, `normalize_teh`, `normalize_alef`, `normalize_spellerrors`, `normalize_searchtext`
+  4. `normalize`: `reduce_tashkeel`; `tokenize`: `autocorrect`, `fix_spaces`
   5. `diacritics`: `separate`, `joint`, then the tashkeel codec (`encode_tashkeel`/`decode_tashkeel`)
   6. `tokenize`: word tokenizer (iterator + `Vec`), then `sentence_tokenize`/`tokenize_with_location`
   7. `unshape`: de-shaping, then reversal helpers
@@ -1010,7 +1010,7 @@ predicates with examples; every upstream symbol appears in `PARITY.md` with a st
 ### Phase 1 — core text hygiene (MVP)
 
 Deliverables: `normalize::strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`,
-`strip_shadda`, `strip_diacritics`, `reduce_tatweel`, `reduce_tashkeel`; `normalize_hamza`,
+`strip_shadda`, `strip_small`, `strip_diacritics`, `reduce_tashkeel`; `normalize_hamza`,
 `normalize_ligature` (+ `normalize_lamalef` alias), `normalize_spellerrors`, `normalize_searchtext`;
 `diacritics::separate`, `joint`; `tokenize::tokens`, `tokenize`, `fix_spaces`.
 
@@ -1384,28 +1384,48 @@ Mirror the same command for `normalize.py`, `number.py`, `trans.py`, `unshape.py
 * [ ] string forms `HAMZAT_STRING`, `HARAKAT_STRING`, `TASHKEEL_STRING` (**not** ported as strings — we
       match on `char` classes; document the mapping in `DIVERGENCES.md`)
 * [ ] `ALPHABETIC_ORDER`, `NAMES` maps → `unicode::tables` (phase 3, `NAMES` depends on `unicode::names`)
-* [ ] `is_hamza(char)`, `is_hamza_above(char)`, `is_hamza_below(char)` **(verify spelling)**
-* [ ] `is_vowel(char)`, `is_shadda(char)`, `is_sukun(char)`, `is_tatweel(char)`, `is_ligature(char)` **(verify)**
-* [ ] `is_letter(char)` **(verify)** and `is_arabicletter`/`is_arabicletterrange` **(verify)**
-* [ ] `is_arabicrange(text)` — all characters in the Arabic ranges
-* [ ] `is_arabicword(word)` — word-restricted variant (no spaces/digits/punctuation) **(verify)**
-* [ ] `is_arabicstring(text)` **(verify)** — legacy camelCase aliases (`isArabicrange`, `isArabicword`,
-      `isArabicstring`) are intentionally **not** ported → `DIVERGENCES.md`
-* [ ] `has_shadda(word)` **(verify)** and legacy `hasShadda` (not ported)
-* [ ] `is_vocalized(word)` **(verify)** and legacy `isVocalized` (not ported)
+* [ ] `is_haraka`, `is_shortharaka`, `is_tanwin`, `is_tashkeel` — **verified**: plain membership in
+      `HARAKAT`/`SHORTHARAKAT`/`TANWIN`/`TASHKEEL`
+* [ ] `is_alef`, `is_yehlike`, `is_wawlike`, `is_teh`, `is_small`, `is_weak`, `is_moon`, `is_sun` —
+      **verified**: membership in `ALEFAT`/`YEHLIKE`/`WAWLIKE`/`TEHLIKE`/`SMALL`/`WEAK`/`MOON`/`SUN`
+* [ ] `is_shadda`, `is_sukun`, `is_tatweel` — **verified**: plain equality with the constant
+* [ ] `is_hamza` — **verified**: upstream is `archar in HAMZAT`, so it also accepts the carriers; our
+      strict predicate is a recorded divergence → `DIVERGENCES.md` D-006
+* [ ] `is_ligature` — **verified**: upstream tests the four isolated forms only → D-005
+* [ ] `is_arabicrange` — **verified**: upstream accepts four ranges (`U+0600–U+06FF`, `U+0750–U+077F`,
+      `U+FB50–U+FDFF`, `U+FE70–U+FEFF`) → D-007
+* [ ] `is_arabicword` — **verified**: `U+0600–U+0652` ∪ the lam-alef forms plus positional heuristics
+      (first char, teh marbuta/alef maksura position, doubled shadda) → D-002
+* [ ] `is_arabicstring`, `is_vocalizedtext` — **verified** semantics recorded in `PARITY.md` §1.1
+* [ ] `is_vocalized` — **verified equivalent** to ours (a lone shadda counts, because upstream's
+      `is_tashkeel` includes shadda); the former D-003 `(verify)` note is closed
+* [ ] `has_shadda`, `first_char`/`second_char`/`last_char`/`secondlast_char` — **verified** names
+* [ ] legacy camelCase aliases (`isArabicrange`, `isArabicword`, `isArabicstring`, `hasShadda`,
+      `isVocalized`) are intentionally **not** ported → `DIVERGENCES.md`
+* [ ] **no** upstream `is_vowel`, `is_letter`, `is_arabicletter`, `is_arabicletterrange`,
+      `is_hamza_above`, `is_hamza_below` — ours are r_abic additions → `PARITY.md` §1.2
 
 ### B.2 `normalize` and `diacritics`
 
-* [ ] `strip_tashkeel(text)` → `normalize::strip_tashkeel` (+ `_into`) — template implementation (`P0`)
-* [ ] `strip_harakat(text)` → keeps shadda, removes the other ḥarakāt
+* [ ] `strip_tashkeel(text)` → `normalize::strip_tashkeel` (+ `_into`) — **done** (the template, `P0`)
+* [ ] `strip_harakat(text)` → keeps shadda, removes the other ḥarakāt — **verified**: the 7 `HARAKAT`
+      marks, guarded upstream by `is_vocalized`
 * [ ] `strip_lastharaka(text)` → `normalize::strip_lastharaka`; keep upstream spelling, add
-      `#[doc(alias = "strip_last_haraka")]`
-* [ ] `strip_tatweel(text)` → `normalize::strip_tatweel`
-* [ ] `strip_shadda(text)` → `normalize::strip_shadda`
-* [ ] `strip_diacritics(text)` → `normalize::strip_diacritics` (ḥarakāt **and** small letters: tanwīn,
-      shadda, sukūn, superscript alef, small waw/yeh)
-* [ ] `reduce_tashkeel(text)` → `normalize::reduce_tashkeel` (upstream deletes "evident" cases)
-* [ ] `reduce_tatweel(text)` → `normalize::reduce_tatweel`
+      `#[doc(alias = "strip_last_haraka")]` — **verified**: it removes every `TANWIN` mark plus one
+      *trailing* `HARAKAT` (`[HARAKAT]$|[TANWIN]`), not "the last mark" in general
+* [ ] `strip_tatweel(text)` → `normalize::strip_tatweel` — **verified**: plain `U+0640` removal
+* [ ] `strip_shadda(text)` → `normalize::strip_shadda` — **verified**: plain `U+0651` removal
+* [ ] `strip_small(text)` → `normalize::strip_small` — **verified**: removes `SMALL` (`U+0670`,
+      `U+06E5`, `U+06E6`); upstream keeps it separate from `strip_diacritics`
+* [ ] `strip_diacritics(text)` → `normalize::strip_diacritics` — **verified**: upstream removes every
+      nonspacing mark (`Mn`) in `U+0600–U+06FE` (tashkeel + `U+0653`–`U+0655` + `U+0670` + the Qur'anic
+      marks) and **not** `U+06E5`/`U+06E6` (`Lm`). **Open decision:** mirror the category rule (needs a
+      hand-written `Mn` range table) or curate our own class and record a divergence
+* [ ] `reduce_tashkeel(text)` → `normalize::reduce_tashkeel` — **verified**: six ordered rules, listed
+      in `PARITY.md` §2
+* [ ] `normalize_teh(text)`, `normalize_alef(text)` → `normalize::{normalize_teh, normalize_alef}` —
+      **verified** additional upstream symbols (teh marbuta → heh; every alef form → alef)
+* [ ] **no `reduce_tatweel` exists in upstream `master`** — it must not be listed as a parity target
 * [ ] `normalize_hamza(word, method="uniform")` → `normalize::normalize_hamza` with
       `HamzaMethod { Uniform, Tasheel }` — **verified** against a local `tools/oracle/` checkout of
       `araby.py`: `"tasheel"` (the Arabic literal `"تسهيل"` is accepted too) folds each hamza onto its
@@ -1579,6 +1599,7 @@ Reminder: `cargo test --doc` is not implied by a plain `cargo test --lib`, and c
 
 | Version | Date | Change |
 |---|---|---|
+| **1.4.2** | 2026-11-03 | PATCH: reconciled §3.2 and Appendix B.1/B.2 with a one-time `tools/oracle/` checkout — corrected the `is_*` predicate list and the `normalize` symbol list, closed every `(verify)` marker in B.1, recorded the verified `strip_*`/`reduce_tashkeel`/`normalize_hamza` semantics, and removed the phantom symbols (`reduce_tatweel`, `is_letter`, `is_arabicletter`, `is_vowel`, `is_hamza_above`/`is_hamza_below`) that upstream `master` does not define. No rule, gate or test requirement changed; `docs/PARITY.md` §1–§2 and `docs/DIVERGENCES.md` (D-002 wording, D-003 withdrawn, D-006/D-007 added) carry the detail. |
 | **1.4.1** | 2026-11-03 | PATCH: corrected upstream facts that Phase 0 had left marked `(verify)`, after a one-time local `tools/oracle/` checkout of the GPL upstream. `normalize_hamza` really is `normalize_hamza(word, method="uniform")` with the methods `uniform`/`tasheel` — not `HamzaMethod { Remove, Tasheel }` — so §3.3's enum example, the Appendix B checklist item and the **tasheel** glossary entry were corrected; the header status line moved to Phase 1. No rule, gate or test requirement changed. |
 | **1.4.0** | 2026-11-01 | MINOR: **§5.7 "Git operations require a human green light"** — no history- or remote-changing git command runs until the user has approved a proposal containing the exact commands, paths, verbatim commit message, expected state and destructive effects; read-only commands are allowlisted, `fetch`/`add` are announce-only, and "ok"/"thanks" are explicitly not approval. Added red line 20, a Definition of Done item, one bullet in each vendor binding and a note in `CONTRIBUTING.md`. |
 | **1.3.0** | 2026-11-01 | MINOR: the canonical ruleset was renamed `CLAUDE.md` → **`AGENTS.md`** (no vendor-named copy ships; vendor files are bindings), and §0.5 ("The ruleset file and its bindings") records the naming policy as a rule. All 20 files referencing the old name were updated, including Rustdoc in `src/**` and the workflow comments. Also fixed the header block, which had lagged at v1.1.0. |
@@ -1597,6 +1618,6 @@ a new gate, or a new mandatory test category; `PATCH` = wording, typos, clarifie
 
 ---
 
-*End of `AGENTS.md` v1.4.1 — if you are an agent reading this at the start of a task, re-read §0.2, the
+*End of `AGENTS.md` v1.4.2 — if you are an agent reading this at the start of a task, re-read §0.2, the
 plan template in §5.1, the edge-case matrix in §4.3 and the gate in §4.8 before you write a single line
 of code or a single test.*
