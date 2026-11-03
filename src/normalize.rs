@@ -153,8 +153,19 @@ mod tests {
     use crate::unicode::{constants, tables};
     use std::borrow::Cow;
 
-    /// `(input, expected)` pairs. Inputs are written as escapes so the intended code-point sequence
-    /// is unambiguous, and every case names the `AGENTS.md` §4.3 row (`E*`) it pins.
+    /// `(input, expected)` pairs; every row names the `AGENTS.md` §4.3 case (`E*`) it pins.
+    ///
+    /// # Why the inputs are escapes and not `constants` names
+    ///
+    /// The §4.2 table form requires `&'static str` literals, and a string literal cannot be assembled
+    /// from `char` constants (`concat!` accepts literals only; const string building is not stable),
+    /// so escapes are forced here. They are also the stronger oracle for this table: spelling the code
+    /// points out means a typo in `unicode::constants` cannot make these expectations agree with the
+    /// bug — `constants.rs` pins those same code points against their numbers.
+    ///
+    /// The two representations are tied together by
+    /// `cross_check_constants_agree_with_the_escape_tables`, and assertions about single code points
+    /// elsewhere in this module use `constants::*`.
     const CASES: &[(&str, &str)] = &[
         // E1 — empty input.
         ("", ""),
@@ -333,6 +344,49 @@ mod tests {
             let twice = strip_tashkeel(&once);
             assert_eq!(once, twice, "input: {input:?}");
         }
+    }
+
+    /// Ties the readable `constants` to the escape tables in this module: if one representation is
+    /// edited without the other, this fails (see the note on `CASES`).
+    #[test]
+    fn cross_check_constants_agree_with_the_escape_tables() {
+        use crate::unicode::constants::{
+            ALEF, DAMMA, DAMMATAN, FATHA, FATHATAN, KASRA, KASRATAN, LAM, MEEM, SEEN, SHADDA,
+            SHEEN, SUKUN,
+        };
+
+        // Member by member: each constant must spell out the escape it is expected to.
+        for (constant, escape) in [
+            (FATHATAN, "\u{064B}"),
+            (DAMMATAN, "\u{064C}"),
+            (KASRATAN, "\u{064D}"),
+            (FATHA, "\u{064E}"),
+            (DAMMA, "\u{064F}"),
+            (KASRA, "\u{0650}"),
+            (SHADDA, "\u{0651}"),
+            (SUKUN, "\u{0652}"),
+        ] {
+            assert_eq!(
+                constant.to_string(),
+                escape,
+                "the constant and the escape must denote one code point"
+            );
+            assert!(
+                tables::TASHKEEL.contains(&constant),
+                "{constant:?} belongs to the class this module strips"
+            );
+        }
+
+        // In practice: a word assembled from constants strips to the letters the E5 escape row expects
+        // (الشَّمْس → الشمس).
+        let vocalized: String = [ALEF, LAM, SHEEN, SHADDA, FATHA, MEEM, SUKUN, SEEN]
+            .into_iter()
+            .collect();
+
+        assert_eq!(
+            strip_tashkeel(&vocalized),
+            "\u{0627}\u{0644}\u{0634}\u{0645}\u{0633}"
+        );
     }
 
     #[test]

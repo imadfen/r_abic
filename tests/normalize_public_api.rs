@@ -10,6 +10,11 @@ use r_abic::normalize::{strip_tashkeel, strip_tashkeel_into};
 use r_abic::unicode::classify;
 
 /// الْعَرَبِيَّةُ — al-ʿarabiyya, spelled out as letters + marks.
+///
+/// Escapes instead of `constants` names are forced here: a `const &str` cannot be assembled from
+/// `char` constants. The same code points are pinned against their numbers in
+/// `unicode::constants`, and `normalize::tests::cross_check_constants_agree_with_the_escape_tables`
+/// ties the two representations together.
 const VOCALIZED_WORD: &str = "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}\u{064F}";
 /// العربية — the same word without diacritics.
 const PLAIN_WORD: &str = "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}";

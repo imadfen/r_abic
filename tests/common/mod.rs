@@ -7,6 +7,14 @@
 
 #![allow(dead_code)] // each integration-test binary uses a different subset of these helpers
 
+use r_abic::unicode::constants::{
+    ALEF, ALEF_HAMZA_ABOVE, ALEF_MAKSURA, ALEF_WASLA, ARABIC_LETTER_MARK, BEH, BYTE_ORDER_MARK,
+    DAMMA, DAMMATAN, FATHA, FATHATAN, FIVE, HAMZA, HAMZA_ABOVE, HAMZA_BELOW, KASRA, KASRATAN,
+    LAM_ALEF, LAM_ALEF_HAMZA_ABOVE, LAM_ALEF_HAMZA_BELOW, LAM_ALEF_MADDA_ABOVE, LEFT_TO_RIGHT_MARK,
+    MADDA_ABOVE, MEEM, NINE_P, RIGHT_TO_LEFT_MARK, SEEN, SHADDA, SMALL_ALEF, SMALL_WAW, SMALL_YEH,
+    SUKUN, TATWEEL, TEH, TEH_MARBUTA, YEH, ZERO, ZERO_P, ZERO_WIDTH_JOINER, ZERO_WIDTH_NON_JOINER,
+};
+
 /// A deterministic pseudo-random generator (xorshift64), seeded by the test.
 ///
 /// Only the tests use it; it is never part of the library, which must stay free of dependencies and
@@ -60,24 +68,29 @@ impl Rng {
 /// The curated alphabet of `AGENTS.md` §4.5: every class a transform must handle, including the
 /// ones it must leave alone (tatweel, small letters, digits, invisible marks) and multi-byte
 /// non-Arabic text (one CJK character, one astral character).
+///
+/// Named `constants` are used wherever one exists so the class coverage is auditable at a glance;
+/// escapes remain only for code points that have no constant — the four *final* lam-alef forms, the
+/// two alef presentation forms, ASCII/CJK/emoji.
 #[rustfmt::skip] // hand-grouped data table: rustfmt would put one character per line and hide the grouping
 pub const ALPHABET: &[char] = &[
     // Base letters, including the carriers and the hamza/wasla forms.
-    '\u{0621}', '\u{0623}', '\u{0627}', '\u{0628}', '\u{0629}', '\u{062A}', '\u{0633}', '\u{0645}',
-    '\u{0649}', '\u{064A}', '\u{0671}',
-    // Marks: every ḥaraka plus shadda.
-    '\u{064B}', '\u{064C}', '\u{064D}', '\u{064E}', '\u{064F}', '\u{0650}', '\u{0651}', '\u{0652}',
+    HAMZA, ALEF_HAMZA_ABOVE, ALEF, BEH, TEH_MARBUTA, TEH, SEEN, MEEM, ALEF_MAKSURA, YEH, ALEF_WASLA,
+    // Marks: every ḥaraka plus shadda (`tables::TASHKEEL`).
+    FATHATAN, DAMMATAN, KASRATAN, FATHA, DAMMA, KASRA, SHADDA, SUKUN,
     // Joiners and small/combining forms that diacritic-stripping must keep.
-    '\u{0640}', '\u{0670}', '\u{06E5}', '\u{06E6}', '\u{0653}', '\u{0654}', '\u{0655}',
-    // Presentation forms and all eight lam-alef ligature code points.
-    '\u{FE8D}', '\u{FE8E}', '\u{FEF5}', '\u{FEF6}', '\u{FEF7}', '\u{FEF8}', '\u{FEF9}', '\u{FEFA}',
-    '\u{FEFB}', '\u{FEFC}',
+    TATWEEL, SMALL_ALEF, SMALL_WAW, SMALL_YEH, MADDA_ABOVE, HAMZA_ABOVE, HAMZA_BELOW,
+    // Presentation forms and all eight lam-alef ligature code points, isolated form then final form.
+    '\u{FE8D}', '\u{FE8E}',
+    LAM_ALEF_MADDA_ABOVE, '\u{FEF6}', LAM_ALEF_HAMZA_ABOVE, '\u{FEF8}',
+    LAM_ALEF_HAMZA_BELOW, '\u{FEFA}', LAM_ALEF, '\u{FEFC}',
     // Digits of the three sets.
-    '0', '7', '\u{0660}', '\u{0665}', '\u{06F0}', '\u{06F9}',
+    '0', '7', ZERO, FIVE, ZERO_P, NINE_P,
     // ASCII letters, punctuation, whitespace and both line terminators.
     'a', 'Z', '.', ',', '"', ' ', '\t', '\r', '\n',
     // Invisible formatting code points (E11–E13).
-    '\u{061C}', '\u{200C}', '\u{200D}', '\u{200E}', '\u{200F}', '\u{FEFF}',
+    ARABIC_LETTER_MARK, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER, LEFT_TO_RIGHT_MARK,
+    RIGHT_TO_LEFT_MARK, BYTE_ORDER_MARK,
     // Multi-byte non-Arabic: one 3-byte and one 4-byte code point (E10).
     '\u{6F22}', '\u{1F389}',
 ];

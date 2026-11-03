@@ -63,7 +63,7 @@ Living tracker for behavioural parity with PyArabic
 
 | Upstream symbol | `r_abic` symbol | Status | Notes |
 |---|---|---|---|
-| `strip_tashkeel(text)` | `normalize::strip_tashkeel` (+ `strip_tashkeel_into`) | done | `Cow` fast path + `_into` buffer reuse; pinned by 9 unit + 4 property + 8 integration tests + 3 doctests; bench `benches/normalize.rs` |
+| `strip_tashkeel(text)` | `normalize::strip_tashkeel` (+ `strip_tashkeel_into`) | done | `Cow` fast path + `_into` buffer reuse; pinned by 10 unit + 4 property + 8 integration tests + 3 doctests; bench `benches/normalize.rs` |
 | `strip_harakat(text)` | `normalize::strip_harakat` | todo | keeps shadda |
 | `strip_lastharaka(text)` | `normalize::strip_lastharaka` | todo | upstream spelling kept, `#[doc(alias)]` |
 | `strip_tatweel(text)` | `normalize::strip_tatweel` | todo | |
