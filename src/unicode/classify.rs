@@ -516,6 +516,25 @@ mod tests {
     }
 
     #[test]
+    fn is_hamza_and_is_arabicrange_are_stricter_than_upstream() {
+        // D-006: only the bare hamza letter counts, not the carriers or the combining marks.
+        assert!(is_hamza(HAMZA));
+        for carrier in [WAW_HAMZA, YEH_HAMZA, ALEF_HAMZA_ABOVE, ALEF_HAMZA_BELOW] {
+            assert!(!is_hamza(carrier), "carrier {carrier:?} is a letter");
+            assert!(is_arabic_letter(carrier), "carrier {carrier:?} is a letter");
+        }
+        assert!(!is_hamza(HAMZA_ABOVE));
+        assert!(!is_hamza(HAMZA_BELOW));
+
+        // D-007: only the main Arabic block is `is_arabicrange`; the presentation forms are not.
+        assert!(is_arabicrange("\u{0627}\u{064E}"));
+        assert!(!is_arabicrange("\u{FEFB}"), "lam-alef ligature");
+        assert!(!is_arabicrange("\u{FE8D}"), "alef isolated form");
+        assert!(!is_arabicrange("\u{0750}"), "Arabic Supplement");
+        assert!(is_arabicrange(""), "vacuously true, as upstream");
+    }
+
+    #[test]
     fn is_arabic_letter_is_exactly_the_letters_table_over_the_arabic_block() {
         for code in 0x0600u32..=0x06FF {
             let c = char::from_u32(code).expect("every code point in this range is a valid char");
