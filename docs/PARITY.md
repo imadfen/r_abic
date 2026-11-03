@@ -7,7 +7,7 @@ Living tracker for behavioural parity with PyArabic
 `TBD` in a note means "upstream semantics not verified yet" — such a symbol must never be marked
 `done`.
 
-**Last updated:** 2026-10-31 (Phase 0 complete: `error` + `unicode`).
+**Last updated:** 2026-11-03 (Phase 1 started: `normalize::strip_tashkeel`).
 
 ---
 
@@ -63,7 +63,7 @@ Living tracker for behavioural parity with PyArabic
 
 | Upstream symbol | `r_abic` symbol | Status | Notes |
 |---|---|---|---|
-| `strip_tashkeel(text)` | `normalize::strip_tashkeel` | todo | template: `Cow` + `_into` |
+| `strip_tashkeel(text)` | `normalize::strip_tashkeel` (+ `strip_tashkeel_into`) | done | `Cow` fast path + `_into` buffer reuse; pinned by 9 unit + 4 property + 8 integration tests + 3 doctests; bench `benches/normalize.rs` |
 | `strip_harakat(text)` | `normalize::strip_harakat` | todo | keeps shadda |
 | `strip_lastharaka(text)` | `normalize::strip_lastharaka` | todo | upstream spelling kept, `#[doc(alias)]` |
 | `strip_tatweel(text)` | `normalize::strip_tatweel` | todo | |
