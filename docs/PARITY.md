@@ -71,7 +71,7 @@ Living tracker for behavioural parity with PyArabic
 | `strip_diacritics(text)` | `normalize::strip_diacritics` | todo | ḥarakāt + small letters |
 | `reduce_tashkeel(text)` | `normalize::reduce_tashkeel` | todo | TBD: exact "evident case" rules |
 | `reduce_tatweel(text)` | `normalize::reduce_tatweel` | todo | |
-| `normalize_hamza(text, method)` | `normalize::normalize_hamza` | todo | `HamzaMethod::{Remove, Tasheel}`; TBD: parameter semantics |
+| `normalize_hamza(word, method="uniform")` | `normalize::normalize_hamza` | todo | verified against a local `araby.py` (`tools/oracle/`, dev-only): `HamzaMethod::{Uniform, Tasheel}`; `tasheel` folds each hamza onto its carrier (alef-madda/alef-hamza/combining hamzas → `ALEF`, `WAW_HAMZA` → `WAW`, `YEH_HAMZA` → `YEH`), `uniform` (the default) maps the whole `HAMZAT` class → `HAMZA` and expands `ALEF_MADDA` → `HAMZA`+`HAMZA` with a leading-madda special case; upstream is *word*-scoped (`word[1]`/`word[2]` indexing) and its docstring wrongly claims it also simplifies lam-alef. `normalize.py`'s no-argument twin folds the alef family to `ALEF` first, so the two upstream modules disagree — we keep one canonical location and pin the mirrored semantics with tests |
 | `normalize_ligature(text)` | `normalize::normalize_ligature` | todo | |
 | `normalize_lamalef(text)` | `normalize::normalize_lamalef` | todo | alias of `normalize_ligature` |
 | `normalize_spellerrors(text)` | `normalize::normalize_spellerrors` | todo | teh marbuta → heh, alef maksura → yeh |

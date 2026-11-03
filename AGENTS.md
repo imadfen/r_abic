@@ -9,9 +9,9 @@
 > `.github/copilot-instructions.md` (Copilot). If a binding disagrees with **this** file, this file wins
 > and the binding must be fixed in the same change.
 >
-> Last reviewed: **2026-11-01** · Ruleset version **v1.4.0** · Toolchain in use: `rustc`/`cargo`
-> 1.98.0, `clippy` 0.1.98, `rustfmt` 1.9.0-stable · Edition **2024** · Status: **Phase 0 complete**
-> (`error` + `unicode` landed) · **Releases are automated** from Conventional Commits via release-plz
+> Last reviewed: **2026-11-03** · Ruleset version **v1.4.1** · Toolchain in use: `rustc`/`cargo`
+> 1.98.0, `clippy` 0.1.98, `rustfmt` 1.9.0-stable · Edition **2024** · Status: **Phase 1 in progress**
+> (`error`, `unicode` and `normalize::strip_tashkeel` landed) · **Releases are automated** from Conventional Commits via release-plz
 > (§8) — versions, tags and `CHANGELOG.md` are never written by hand.
 
 ---
@@ -299,7 +299,7 @@ differ, document it with `/// Mirrors PyArabic `araby.strip_tashkeel`.` **and** 
   form. Never implement `Deref` (no "smart pointer" apologetics), never `Index` (use accessors), never
   silent `From` conversions that allocate.
 * **Enums instead of strings** for closed option sets: `DigitSet { West, East, Persian }`,
-  `TransliterationScheme { Arabic, Tim, Sampa, ... }`, `HamzaMethod { Remove, Tasheel }`. Add
+  `TransliterationScheme { Arabic, Tim, Sampa, ... }`, `HamzaMethod { Uniform, Tasheel }`. Add
   `#[non_exhaustive]` to enums we may extend (`Error`, `TokenKind`, option enums) so growth is not a
   breaking change. Provide `FromStr` + `Display` when a CLI/config string form is genuinely useful.
 * **Options builders** for >3 orthogonal options: `TokenizeOptions::default().with_…()`; do not grow
@@ -1406,8 +1406,15 @@ Mirror the same command for `normalize.py`, `number.py`, `trans.py`, `unshape.py
       shadda, sukūn, superscript alef, small waw/yeh)
 * [ ] `reduce_tashkeel(text)` → `normalize::reduce_tashkeel` (upstream deletes "evident" cases)
 * [ ] `reduce_tatweel(text)` → `normalize::reduce_tatweel`
-* [ ] `normalize_hamza(text, method=…)` → `normalize::normalize_hamza` with `HamzaMethod { Remove, Tasheel }`
-      **(verify the method parameter name/semantics: `tasheel` folds hamza onto its carrier letter)**
+* [ ] `normalize_hamza(word, method="uniform")` → `normalize::normalize_hamza` with
+      `HamzaMethod { Uniform, Tasheel }` — **verified** against a local `tools/oracle/` checkout of
+      `araby.py`: `"tasheel"` (the Arabic literal `"تسهيل"` is accepted too) folds each hamza onto its
+      carrier — alef-madda, alef-hamza and the combining hamzas → `ALEF`, `WAW_HAMZA` → `WAW`,
+      `YEH_HAMZA` → `YEH`; every other value, **including the `"uniform"` default**, replaces the whole
+      `HAMZAT` class with bare `HAMZA` and expands `ALEF_MADDA` → `HAMZA`+`HAMZA`, with a special case
+      for a word that starts with alef-madda. Upstream is *word*-scoped (it indexes `word[1]`/`word[2]`)
+      and its docstring wrongly claims it also simplifies lam-alef — that is `normalize_ligature`'s job
+      (pin both facts with tests when implementing)
 * [ ] `normalize_ligature(text)` → `normalize::normalize_ligature`
 * [ ] `normalize_lamalef(text)` → `normalize::normalize_lamalef` (alias of `normalize_ligature`, as upstream)
 * [ ] `normalize_spellerrors(text)` → `normalize::normalize_spellerrors` (teh marbuta → heh, alef maksura → yeh)
@@ -1501,7 +1508,7 @@ Mirror the same command for `normalize.py`, `number.py`, `trans.py`, `unshape.py
 | **tanwīn** (تَنْوِين) | The three nunation marks (`FATHATAN`, `DAMMATAN`, `KASRATAN`). |
 | **tatweel / kashida** (تَطْوِيل / كَشِيدَة) | `U+0640`, a pure elongation joiner; never a letter, never a word boundary. |
 | **hamza** (هَمْزَة) | `U+0621`; also appears carried on alef/waw/yeh (`ALEF_HAMZA_*`, `WAW_HAMZA`, `YEH_HAMZA`) and as combining `HAMZA_ABOVE/BELOW` (`U+0654/U+0655`). |
-| **tasheel** (تَسْهِيل) | Hamza simplification: fold hamza onto its carrier letter (upstream's `normalize_hamza` method). |
+| **tasheel** (تَسْهِيل) | Hamza simplification: fold hamza onto its carrier letter (upstream `normalize_hamza(word, method="tasheel")`); the `"uniform"` default instead maps every hamza form to bare `HAMZA`. |
 | **madda** (مَدَّة) | `U+0653`; `ALEF_MADDA` `U+0622` is alef + madda. |
 | **wasla** (وَصْلَة) | `ALEF_WASLA U+0671`. |
 | **kalima** (كَلِمَة) | "Word": the `(letters, marks)` pair type in `kalima::Word`. |
@@ -1572,6 +1579,7 @@ Reminder: `cargo test --doc` is not implied by a plain `cargo test --lib`, and c
 
 | Version | Date | Change |
 |---|---|---|
+| **1.4.1** | 2026-11-03 | PATCH: corrected upstream facts that Phase 0 had left marked `(verify)`, after a one-time local `tools/oracle/` checkout of the GPL upstream. `normalize_hamza` really is `normalize_hamza(word, method="uniform")` with the methods `uniform`/`tasheel` — not `HamzaMethod { Remove, Tasheel }` — so §3.3's enum example, the Appendix B checklist item and the **tasheel** glossary entry were corrected; the header status line moved to Phase 1. No rule, gate or test requirement changed. |
 | **1.4.0** | 2026-11-01 | MINOR: **§5.7 "Git operations require a human green light"** — no history- or remote-changing git command runs until the user has approved a proposal containing the exact commands, paths, verbatim commit message, expected state and destructive effects; read-only commands are allowlisted, `fetch`/`add` are announce-only, and "ok"/"thanks" are explicitly not approval. Added red line 20, a Definition of Done item, one bullet in each vendor binding and a note in `CONTRIBUTING.md`. |
 | **1.3.0** | 2026-11-01 | MINOR: the canonical ruleset was renamed `CLAUDE.md` → **`AGENTS.md`** (no vendor-named copy ships; vendor files are bindings), and §0.5 ("The ruleset file and its bindings") records the naming policy as a rule. All 20 files referencing the old name were updated, including Rustdoc in `src/**` and the workflow comments. Also fixed the header block, which had lagged at v1.1.0. |
 | **1.2.0** | 2026-11-01 | MINOR: added `CONTRIBUTING.md`, the human on-ramp (setup, branch/PR model, commit grammar with the release-impact table, what may and may not be touched, tests/docs expectations, local gate, release flow, troubleshooting, licensing of contributions). New rule: §5.2 requires `CONTRIBUTING.md` to be updated in the same commit as any branch/commit/PR/gate rule change. Also recorded in the §3.1 layout and the §8.3 file table; `README.md` points newcomers at it. |
@@ -1589,6 +1597,6 @@ a new gate, or a new mandatory test category; `PATCH` = wording, typos, clarifie
 
 ---
 
-*End of `AGENTS.md` v1.4.0 — if you are an agent reading this at the start of a task, re-read §0.2, the
+*End of `AGENTS.md` v1.4.1 — if you are an agent reading this at the start of a task, re-read §0.2, the
 plan template in §5.1, the edge-case matrix in §4.3 and the gate in §4.8 before you write a single line
 of code or a single test.*
