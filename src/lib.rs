@@ -11,13 +11,14 @@
 //!
 //! ## Status
 //!
-//! Phase 0 — the crate provides the error type and the [`unicode`] module (code points, character
-//! classes, classification predicates). Text transforms, tokenization, unshaping, transliteration
-//! and numbers arrive in later phases (see `AGENTS.md` §6).
+//! Phase 1 (in progress) — the crate provides the error type, the [`unicode`] module (code points,
+//! character classes, classification predicates) and the [`normalize`] module (diacritic stripping).
+//! Tokenization, unshaping, transliteration and numbers arrive in later phases (see `AGENTS.md` §6).
 //!
 //! ## Examples
 //!
 //! ```
+//! use r_abic::normalize::strip_tashkeel;
 //! use r_abic::unicode::{classify, constants, tables};
 //!
 //! // Code points are exposed under their PyArabic names:
@@ -32,6 +33,13 @@
 //! // Whole-word helpers work on `&str`:
 //! assert!(classify::has_shadda("الشَّمس"));
 //! assert_eq!(tables::alphabetic_order(constants::ALEF), Some(1));
+//!
+//! // Text transforms borrow their input when nothing has to change:
+//! assert_eq!(strip_tashkeel("الْعَرَبِيَّةُ"), "العربية");
+//! assert!(matches!(
+//!     strip_tashkeel("العربية"),
+//!     std::borrow::Cow::Borrowed(_)
+//! ));
 //! ```
 //!
 //! ## Design constraints
@@ -57,6 +65,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod error;
+pub mod normalize;
 pub mod unicode;
 
 pub use crate::error::{Error, Result};

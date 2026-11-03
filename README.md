@@ -3,12 +3,14 @@
 Arabic text processing library for Rust, inspired by
 [PyArabic](https://github.com/linuxscout/pyarabic).
 
-> Status: **Phase 0** — error type + the `unicode` module (code points, class tables, classification
-> predicates). Text transforms arrive in Phase 1; see [`AGENTS.md`](AGENTS.md) §6.
+> Status: **Phase 1** (in progress) — the `unicode` module (code points, class tables, classification
+> predicates) and `normalize::strip_tashkeel` are implemented. The remaining transforms, tokenization,
+> unshaping, transliteration and numbers follow; see [`AGENTS.md`](AGENTS.md) §6.
 
 ## Quick start
 
 ```rust
+use r_abic::normalize::strip_tashkeel;
 use r_abic::unicode::{classify, constants, tables};
 
 // Code points are exposed under their PyArabic names.
@@ -20,6 +22,13 @@ assert!(!classify::is_haraka(constants::SHADDA)); // shadda is tashkeel, not a h
 assert!(classify::is_arabicword("العربية"));
 assert_eq!(tables::HARAKAT.len(), 7);
 assert_eq!(tables::alphabetic_order(constants::ALEF), Some(1));
+
+// Text transforms borrow their input when nothing has to change (zero-copy fast path).
+assert_eq!(strip_tashkeel("الْعَرَبِيَّةُ"), "العربية");
+assert!(matches!(
+    strip_tashkeel("العربية"),
+    std::borrow::Cow::Borrowed(_)
+));
 ```
 
 ## Build
@@ -27,6 +36,7 @@ assert_eq!(tables::alphabetic_order(constants::ALEF), Some(1));
 ```sh
 cargo build
 cargo test
+cargo bench                                # criterion benchmarks
 ```
 
 ## Development
