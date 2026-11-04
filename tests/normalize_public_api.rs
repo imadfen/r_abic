@@ -7,9 +7,9 @@
 use std::borrow::Cow;
 
 use r_abic::normalize::{
-    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
-    strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
-    strip_tatweel, strip_tatweel_into,
+    strip_diacritics, strip_diacritics_into, strip_harakat, strip_harakat_into, strip_lastharaka,
+    strip_lastharaka_into, strip_shadda, strip_shadda_into, strip_small, strip_small_into,
+    strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify;
 
@@ -353,6 +353,52 @@ fn strip_small_into_can_reuse_one_buffer() {
         (PLAIN_WORD, PLAIN_WORD),
     ] {
         strip_small_into(word, &mut buffer);
+
+        assert_eq!(buffer, expected, "word: {word:?}");
+    }
+}
+
+#[test]
+fn strip_diacritics_removes_marks_but_keeps_small_letters() {
+    // الرَّحْمَٰن → الرحمن: every ḥaraka, shadda and superscript alef goes.
+    let vocalized =
+        "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0670}\u{0646}";
+    assert_eq!(
+        strip_diacritics(vocalized),
+        "\u{0627}\u{0644}\u{0631}\u{062D}\u{0645}\u{0646}"
+    );
+    assert!(matches!(strip_diacritics(VOCALIZED_WORD), Cow::Owned(_)));
+
+    // `U+06E5`/`U+06E6` are modifier letters (`Lm`), not nonspacing marks, so they survive.
+    assert_eq!(
+        strip_diacritics("\u{0628}\u{06E5}\u{06E6}"),
+        "\u{0628}\u{06E5}\u{06E6}"
+    );
+}
+
+#[test]
+fn strip_diacritics_agrees_with_strip_tashkeel_on_plain_tashkeel() {
+    // On ordinary vocalized text every mark is tashkeel, so both transforms agree.
+    assert_eq!(
+        strip_diacritics(VOCALIZED_WORD),
+        strip_tashkeel(VOCALIZED_WORD)
+    );
+
+    // Nothing to remove: borrowed, and no normalization form is applied.
+    assert!(matches!(strip_diacritics(PLAIN_WORD), Cow::Borrowed(_)));
+    assert!(matches!(strip_diacritics(""), Cow::Borrowed("")));
+}
+
+#[test]
+fn strip_diacritics_into_can_reuse_one_buffer() {
+    let mut buffer = String::new();
+
+    for (word, expected) in [
+        (VOCALIZED_WORD, PLAIN_WORD),
+        ("\u{0300}", "\u{0300}"),
+        (PLAIN_WORD, PLAIN_WORD),
+    ] {
+        strip_diacritics_into(word, &mut buffer);
 
         assert_eq!(buffer, expected, "word: {word:?}");
     }

@@ -11,7 +11,8 @@ use std::hint::black_box;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 use r_abic::normalize::{
-    strip_harakat, strip_lastharaka, strip_shadda, strip_small, strip_tashkeel, strip_tatweel,
+    strip_diacritics, strip_harakat, strip_lastharaka, strip_shadda, strip_small, strip_tashkeel,
+    strip_tatweel,
 };
 use r_abic::unicode::constants::{SMALL_ALEF, TATWEEL};
 
@@ -115,6 +116,10 @@ fn bench_strip_small(c: &mut Criterion) {
     sweep_sizes(c, "strip_small", strip_small, &sizes(&dotted, PLAIN));
 }
 
+fn bench_strip_diacritics(c: &mut Criterion) {
+    sweep(c, "strip_diacritics", strip_diacritics);
+}
+
 criterion_group!(
     benches,
     bench_strip_tashkeel,
@@ -122,6 +127,7 @@ criterion_group!(
     bench_strip_lastharaka,
     bench_strip_tatweel,
     bench_strip_shadda,
-    bench_strip_small
+    bench_strip_small,
+    bench_strip_diacritics
 );
 criterion_main!(benches);
