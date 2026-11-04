@@ -10,7 +10,8 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-use r_abic::normalize::{strip_harakat, strip_lastharaka, strip_tashkeel};
+use r_abic::normalize::{strip_harakat, strip_lastharaka, strip_tashkeel, strip_tatweel};
+use r_abic::unicode::constants::TATWEEL;
 
 /// A fully vocalized sentence: the realistic worst case, where nearly every letter carries a mark.
 const VOCALIZED: &str = "الْعَرَبِيَّةُ لُغَةٌ جَمِيلَةٌ وَاسِعَةُ الِانْتِشَارِ";
@@ -23,15 +24,26 @@ fn fill(unit: &str, bytes: usize) -> String {
     unit.repeat(bytes / unit.len() + 1)
 }
 
-/// The inputs every transform is measured on: one vocalized sentence, a realistic paragraph, 1 MiB of
-/// prose, and the same 1 MiB already clean (the zero-copy path).
-fn inputs() -> [(&'static str, String); 4] {
+/// The four sizes every transform is measured at, built from a `unit` (text the transform must
+/// rewrite) and a `clean` text (already in the target form, to measure the zero-copy path).
+fn sizes(unit: &str, clean: &str) -> [(&'static str, String); 4] {
     [
-        ("tiny", VOCALIZED.to_string()),
-        ("paragraph/4KiB", fill(VOCALIZED, 4 * 1024)),
-        ("prose/1MiB", fill(VOCALIZED, 1 << 20)),
-        ("prose/1MiB-clean", fill(PLAIN, 1 << 20)),
+        ("tiny", unit.to_string()),
+        ("paragraph/4KiB", fill(unit, 4 * 1024)),
+        ("prose/1MiB", fill(unit, 1 << 20)),
+        ("prose/1MiB-clean", fill(clean, 1 << 20)),
     ]
+}
+
+/// A kashida after every letter: the worst case for `strip_tatweel`, since the shared [`VOCALIZED`]
+/// unit contains no `U+0640` and would only ever exercise the zero-copy path.
+fn kashida_stretched(unit: &str) -> String {
+    let mut out = String::with_capacity(unit.len() * 2);
+    for ch in unit.chars() {
+        out.push(ch);
+        out.push(TATWEEL);
+    }
+    out
 }
 
 /// Sweeps one transform over [`inputs()`]. Sharing the sweep keeps every `strip_*` measured the same
@@ -44,9 +56,22 @@ fn sweep<F>(c: &mut Criterion, group_name: &'static str, strip: F)
 where
     F: for<'a> Fn(&'a str) -> Cow<'a, str>,
 {
+    sweep_sizes(c, group_name, strip, &sizes(VOCALIZED, PLAIN));
+}
+
+/// Like [`sweep`], but over explicit inputs — for a transform whose interesting unit is not
+/// `VOCALIZED` (e.g. `strip_tatweel`, which removes kashidas).
+fn sweep_sizes<F>(
+    c: &mut Criterion,
+    group_name: &'static str,
+    strip: F,
+    inputs: &[(&'static str, String)],
+) where
+    F: for<'a> Fn(&'a str) -> Cow<'a, str>,
+{
     let mut group = c.benchmark_group(group_name);
 
-    for (name, input) in inputs() {
+    for (name, input) in inputs {
         let bytes = u64::try_from(input.len()).unwrap_or(u64::MAX);
         group.throughput(Throughput::Bytes(bytes));
         group.bench_with_input(
@@ -73,10 +98,16 @@ fn bench_strip_lastharaka(c: &mut Criterion) {
     sweep(c, "strip_lastharaka", strip_lastharaka);
 }
 
+fn bench_strip_tatweel(c: &mut Criterion) {
+    let stretched = kashida_stretched(VOCALIZED);
+    sweep_sizes(c, "strip_tatweel", strip_tatweel, &sizes(&stretched, PLAIN));
+}
+
 criterion_group!(
     benches,
     bench_strip_tashkeel,
     bench_strip_harakat,
-    bench_strip_lastharaka
+    bench_strip_lastharaka,
+    bench_strip_tatweel
 );
 criterion_main!(benches);

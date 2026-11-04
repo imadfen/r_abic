@@ -19,7 +19,7 @@
 
 use std::borrow::Cow;
 
-use crate::unicode::classify::{is_haraka, is_tanwin, is_tashkeel};
+use crate::unicode::classify::{is_haraka, is_tanwin, is_tashkeel, is_tatweel};
 
 /// Removes every ḥaraka and shadda (`TASHKEEL`) from `text`, leaving all other characters alone.
 ///
@@ -248,6 +248,91 @@ pub fn strip_harakat_into<'a>(text: &str, out: &'a mut String) -> &'a mut String
     strip_by_into(text, out, |_, ch| is_haraka(ch))
 }
 
+/// Removes every tatweel (kashida, `U+0640`) from `text`.
+///
+/// Mirrors `PyArabic` `araby.strip_tatweel` (also reachable upstream as
+/// `pyarabic.normalize.strip_tatweel`).
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+/// use r_abic::normalize::strip_tatweel;
+///
+/// // A kashida run inside a word disappears: العــــربية → العربية.
+/// assert_eq!(strip_tatweel("العــــربية"), "العربية");
+///
+/// // With no kashida to remove the input is borrowed, not copied:
+/// assert!(matches!(strip_tatweel("العربية"), Cow::Borrowed(_)));
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`, so it is always a
+/// `char` boundary (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// Removes exactly one code point, `U+0640` ARABIC TATWEEL. Tatweel is a joiner rather than a letter
+/// or a mark (`AGENTS.md` §3.5, §4.3 E6), so — unlike [`strip_tashkeel`] — this transform never
+/// touches ḥarakāt, shadda, superscript alef, the small waw/yeh, the combining hamzas, presentation
+/// forms (including the lam-alef ligatures), digits, punctuation, formatting code points or anything
+/// outside Arabic. `unicode::tables::NOT_DEF_HARAKA` is an alias of the same code point, so it is
+/// removed too. Marks are never reordered, and no normalization form is applied.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when `text` contains no tatweel; otherwise
+/// allocates one `String` with the capacity of the input, copies the prefix before the first kashida
+/// with a single `push_str`, and filters the remainder.
+///
+/// # Parity
+///
+/// Same result as upstream for every input: upstream removes plain `U+0640`, with no guard.
+#[must_use]
+pub fn strip_tatweel(text: &str) -> Cow<'_, str> {
+    strip_by(text, |_, ch| is_tatweel(ch))
+}
+
+/// Removes every tatweel from `text` and writes the result into `out`.
+///
+/// Mirrors `PyArabic` `araby.strip_tatweel`, but reuses a caller-owned buffer instead of returning a
+/// new string, which keeps hot loops free of allocations (`AGENTS.md` §3.3, §3.6).
+///
+/// `out` is **cleared first** and then replaced with the stripped text; the function returns `out` so
+/// calls can be chained.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::strip_tatweel_into;
+///
+/// let mut buffer = String::from("stale content");
+/// strip_tatweel_into("العــــربية", &mut buffer);
+/// assert_eq!(buffer, "العربية");
+///
+/// // The buffer is returned, so calls can be chained:
+/// let mut other = String::new();
+/// strip_tatweel_into("كتـاب", &mut other).push('!');
+/// assert_eq!(other, "كتاب!");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The removed and kept code points are exactly those documented on [`strip_tatweel`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
+/// kashida is found, so repeated calls with clean input reuse the existing capacity.
+pub fn strip_tatweel_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    strip_by_into(text, out, |_, ch| is_tatweel(ch))
+}
+
 /// Removes every tanwīn mark and, at most, one trailing ḥaraka from `text`, keeping shadda.
 ///
 /// Mirrors `PyArabic` `araby.strip_lastharaka` — note the upstream spelling (`..._haraka`, not
@@ -386,9 +471,9 @@ where
 mod tests {
     use super::{
         strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_tashkeel,
-        strip_tashkeel_into,
+        strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
     };
-    use crate::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel};
+    use crate::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel, is_tatweel};
     use crate::unicode::{constants, tables};
     use std::borrow::Cow;
 
@@ -1099,5 +1184,191 @@ mod tests {
             input.is_char_boundary(input.len()),
             "no code point is split"
         );
+    }
+
+    /// `(input, expected)` pairs for `strip_tatweel`, in the same escape convention as `CASES`.
+    ///
+    /// Every row except the first two proves the function is *narrower* than its siblings: only the
+    /// kashida (`U+0640`) goes, while marks, ligatures, formatting code points, digits and Latin text
+    /// are all preserved.
+    const TATWEEL_CASES: &[(&str, &str)] = &[
+        // E1 — empty input; E2 — whitespace only.
+        ("", ""),
+        ("   \t\n", "   \t\n"),
+        // E6 — a kashida run on its own disappears entirely ...
+        ("\u{0640}", ""),
+        ("\u{0640}\u{0640}\u{0640}", ""),
+        // ... and inside a word only the kashida goes: العــــربية → العربية.
+        (
+            "\u{0627}\u{0644}\u{0639}\u{0640}\u{0640}\u{0640}\u{0640}\u{0631}\u{0628}\u{064A}\u{0629}",
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}",
+        ),
+        ("\u{0628}\u{0640}\u{062A}", "\u{0628}\u{062A}"),
+        // E3/E4 — marks are not tatweel, so they survive untouched.
+        ("\u{064E}\u{0651}", "\u{064E}\u{0651}"),
+        ("\u{064E}\u{0628}", "\u{064E}\u{0628}"),
+        // E7 — mixed script: only the Arabic kashida is removed.
+        (
+            "\u{0639}\u{0640}\u{0631}\u{0628} Book",
+            "\u{0639}\u{0631}\u{0628} Book",
+        ),
+        // E8 — digits of the three sets.
+        (
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+        ),
+        // E9 — punctuation; E10 — astral characters.
+        (
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+        ),
+        // E11–E13 — joiners, directional marks and BOM.
+        ("\u{0628}\u{200D}\u{062A}", "\u{0628}\u{200D}\u{062A}"),
+        (
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        (
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        // E14–E16 — presentation forms and ligatures pass through unchanged.
+        ("\u{FE8D}\u{FE8E}", "\u{FE8D}\u{FE8E}"),
+        ("\u{FEFB}\u{0651}", "\u{FEFB}\u{0651}"),
+        // E17 — line terminators preserved exactly.
+        (
+            "\u{0623}\u{0640}\u{0628}\r\n\u{062A}",
+            "\u{0623}\u{0628}\r\n\u{062A}",
+        ),
+        (
+            "\u{0623}\u{0640}\u{0628}\n\u{062A}",
+            "\u{0623}\u{0628}\n\u{062A}",
+        ),
+        // E19 — stacked kashidas all go.
+        (
+            "\u{0645}\u{0640}\u{0640}\u{0640}\u{062F}",
+            "\u{0645}\u{062F}",
+        ),
+        // E20 — no normalization is applied.
+        ("\u{0627}\u{0654}", "\u{0627}\u{0654}"),
+    ];
+
+    #[test]
+    fn strip_tatweel_matches_the_case_table() {
+        for &(input, expected) in TATWEEL_CASES {
+            assert_eq!(strip_tatweel(input), expected, "input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn strip_tatweel_removes_exactly_the_kashida_and_nothing_else() {
+        for code in 0x0600u32..=0x06FF {
+            let Some(c) = char::from_u32(code) else {
+                continue;
+            };
+            let input = c.to_string();
+            assert_eq!(
+                strip_tatweel(&input).is_empty(),
+                is_tatweel(c),
+                "U+{code:04X} must be removed only when it is tatweel"
+            );
+        }
+
+        // Nothing outside the block is touched either.
+        for kept in [
+            "\u{0651}",
+            "\u{064E}",
+            "\u{0670}",
+            "\u{0300}",
+            "\u{FEFB}",
+            "a",
+            "\u{1F389}",
+        ] {
+            assert_eq!(strip_tatweel(kept), kept, "{kept:?} must be kept");
+        }
+    }
+
+    #[test]
+    fn strip_tatweel_borrows_input_without_a_kashida() {
+        for clean in [
+            "",
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}",
+            "\u{0628}\u{0651}",
+            "\u{FEFB}",
+            "\u{1F389}",
+        ] {
+            assert!(
+                matches!(strip_tatweel(clean), Cow::Borrowed(_)),
+                "nothing to remove in {clean:?}"
+            );
+        }
+        assert!(
+            matches!(strip_tatweel("\u{0628}\u{0640}\u{062A}"), Cow::Owned(_)),
+            "a kashida forces an allocation"
+        );
+    }
+
+    #[test]
+    fn strip_tatweel_removes_only_the_kashida_own_bytes() {
+        let input = "\u{0628}\u{0640}\u{1F389}\u{0640}";
+        let output = strip_tatweel(input);
+
+        assert_eq!(output, "\u{0628}\u{1F389}");
+        assert_eq!(
+            input.len() - output.len(),
+            4,
+            "two two-byte kashidas were removed"
+        );
+        assert!(
+            input.is_char_boundary(input.len()),
+            "no code point is split"
+        );
+    }
+
+    #[test]
+    fn strip_tatweel_matches_the_word_spelled_out_in_the_documentation() {
+        // Pins the escape spelling of the kashida run in the doc example (العــــربية), so a
+        // hand-typed tatweel can never silently change what the documentation promises.
+        let stretched = "\u{0627}\u{0644}\u{0639}\u{0640}\u{0640}\u{0640}\u{0640}\u{0631}\u{0628}\u{064A}\u{0629}";
+        assert_eq!(
+            strip_tatweel(stretched),
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}"
+        );
+        assert_eq!(
+            tables::NOT_DEF_HARAKA,
+            constants::TATWEEL,
+            "upstream aliases NOT_DEF_HARAKA to tatweel, so both are removed"
+        );
+        assert_eq!(strip_tatweel(&constants::TATWEEL.to_string()), "");
+    }
+
+    #[test]
+    fn strip_tatweel_into_clears_the_buffer_and_matches_the_case_table() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, expected) in TATWEEL_CASES {
+            strip_tatweel_into(input, &mut buffer);
+            assert_eq!(buffer, expected, "input: {input:?}");
+        }
+
+        strip_tatweel_into("\u{0628}\u{0640}\u{062A}", &mut buffer);
+        assert_eq!(buffer, "\u{0628}\u{062A}");
+        strip_tatweel_into("", &mut buffer);
+        assert_eq!(buffer, "");
+
+        // The buffer is returned, so calls can be chained.
+        strip_tatweel_into("\u{0628}\u{0640}", &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0628}!");
+    }
+
+    #[test]
+    fn strip_tatweel_commutes_with_the_mark_strippers() {
+        // Tatweel and the mark classes are disjoint, so the two transforms can never interfere.
+        for &(input, _) in CASES.iter().chain(HARAKAT_CASES) {
+            assert_eq!(
+                strip_tatweel(&strip_tashkeel(input)),
+                strip_tashkeel(&strip_tatweel(input)),
+                "counterexample: {input:?}"
+            );
+        }
     }
 }

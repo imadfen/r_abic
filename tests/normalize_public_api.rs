@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 use r_abic::normalize::{
     strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_tashkeel,
-    strip_tashkeel_into,
+    strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify;
 
@@ -212,4 +212,45 @@ fn into_variant_can_reuse_one_buffer_across_a_document() {
             "\u{0645}\u{062D}\u{0645}\u{062F}".to_string(),
         ]
     );
+}
+
+#[test]
+fn strip_tatweel_removes_only_the_kashida() {
+    // العـــربية → العربية: the kashida run goes and every letter stays.
+    let stretched =
+        "\u{0627}\u{0644}\u{0639}\u{0640}\u{0640}\u{0640}\u{0631}\u{0628}\u{064A}\u{0629}";
+    assert_eq!(strip_tatweel(stretched), PLAIN_WORD);
+    assert!(matches!(strip_tatweel(stretched), Cow::Owned(_)));
+
+    // A tatweel-only run collapses to nothing.
+    assert_eq!(strip_tatweel("\u{0640}\u{0640}\u{0640}"), "");
+}
+
+#[test]
+fn strip_tatweel_keeps_marks_ligatures_and_latin_text() {
+    // Marks, a lam-alef ligature and Latin letters are all outside the kashida's class.
+    let mixed = "\u{0645}\u{0640}\u{0631}\u{062D}\u{0628}\u{0627} \u{FEFB} Book";
+    assert_eq!(
+        strip_tatweel(mixed),
+        "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627} \u{FEFB} Book"
+    );
+
+    // Nothing to remove: the input is borrowed, and no normalization form is applied.
+    assert!(matches!(strip_tatweel(PLAIN_WORD), Cow::Borrowed(_)));
+    assert!(matches!(strip_tatweel(""), Cow::Borrowed("")));
+}
+
+#[test]
+fn strip_tatweel_into_can_reuse_one_buffer() {
+    let mut buffer = String::new();
+
+    for (word, expected) in [
+        ("\u{0645}\u{0640}\u{062F}", "\u{0645}\u{062F}"),
+        (PLAIN_WORD, PLAIN_WORD),
+        ("\u{0640}\u{0640}", ""),
+    ] {
+        strip_tatweel_into(word, &mut buffer);
+
+        assert_eq!(buffer, expected, "word: {word:?}");
+    }
 }
