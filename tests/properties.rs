@@ -10,8 +10,8 @@ use std::borrow::Cow;
 
 use common::{ALPHABET, Rng};
 use r_abic::normalize::{
-    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_tashkeel,
-    strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
+    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
+    strip_shadda_into, strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel, is_tatweel};
 
@@ -35,6 +35,7 @@ const STRIPPERS: &[Stripper] = &[
     // calls (upstream's `[HARAKAT]$|[TANWIN]` behaves the same). Its own invariants are below.
     ("strip_lastharaka", strip_lastharaka, None, false),
     ("strip_tatweel", strip_tatweel, Some(is_tatweel), true),
+    ("strip_shadda", strip_shadda, Some(is_shadda), true),
 ];
 
 /// Samples per property: enough to hit every class combination of the curated alphabet while keeping
@@ -205,6 +206,9 @@ fn into_variants_agree_with_the_cow_variants() {
             strip_tatweel(&input),
             "strip_tatweel_into: {input:?}"
         );
+
+        strip_shadda_into(&input, &mut buffer);
+        assert_eq!(buffer, strip_shadda(&input), "strip_shadda_into: {input:?}");
     }
 }
 

@@ -10,7 +10,9 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-use r_abic::normalize::{strip_harakat, strip_lastharaka, strip_tashkeel, strip_tatweel};
+use r_abic::normalize::{
+    strip_harakat, strip_lastharaka, strip_shadda, strip_tashkeel, strip_tatweel,
+};
 use r_abic::unicode::constants::TATWEEL;
 
 /// A fully vocalized sentence: the realistic worst case, where nearly every letter carries a mark.
@@ -103,11 +105,16 @@ fn bench_strip_tatweel(c: &mut Criterion) {
     sweep_sizes(c, "strip_tatweel", strip_tatweel, &sizes(&stretched, PLAIN));
 }
 
+fn bench_strip_shadda(c: &mut Criterion) {
+    sweep(c, "strip_shadda", strip_shadda);
+}
+
 criterion_group!(
     benches,
     bench_strip_tashkeel,
     bench_strip_harakat,
     bench_strip_lastharaka,
-    bench_strip_tatweel
+    bench_strip_tatweel,
+    bench_strip_shadda
 );
 criterion_main!(benches);

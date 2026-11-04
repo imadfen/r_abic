@@ -19,7 +19,7 @@
 
 use std::borrow::Cow;
 
-use crate::unicode::classify::{is_haraka, is_tanwin, is_tashkeel, is_tatweel};
+use crate::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel, is_tatweel};
 
 /// Removes every ḥaraka and shadda (`TASHKEEL`) from `text`, leaving all other characters alone.
 ///
@@ -333,6 +333,94 @@ pub fn strip_tatweel_into<'a>(text: &str, out: &'a mut String) -> &'a mut String
     strip_by_into(text, out, |_, ch| is_tatweel(ch))
 }
 
+/// Removes every shadda (`U+0651`) from `text`, leaving every other mark in place.
+///
+/// Mirrors `PyArabic` `araby.strip_shadda`.
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+/// use r_abic::normalize::strip_shadda;
+///
+/// // Only the gemination mark goes; the ḥaraka that sat on it stays: الشَّمْس → الشَمْس.
+/// assert_eq!(strip_shadda("الشَّمْس"), "الشَمْس");
+///
+/// // With no shadda to remove the input is borrowed, not copied:
+/// assert!(matches!(strip_shadda("الشمس"), Cow::Borrowed(_)));
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`, so it is always a
+/// `char` boundary (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// Removes exactly one code point, `U+0651` ARABIC SHADDA. Unlike [`strip_tashkeel`] it keeps the
+/// seven `HARAKAT` marks (short vowels, tanwīn, sukūn), and — unlike the planned `strip_diacritics`
+/// — it never touches superscript alef (`U+0670`), the small waw/yeh (`U+06E5`/`U+06E6`), the
+/// combining hamzas (`U+0653`–`U+0655`), tatweel (`U+0640`), presentation forms (including the
+/// lam-alef ligatures), digits, punctuation, formatting code points or anything outside Arabic.
+/// [`strip_harakat`] keeps exactly the mark this function removes, so
+/// `strip_shadda(strip_harakat(x)) == strip_tashkeel(x)` (and the reverse order too) for every
+/// input. Marks are never reordered, and no normalization form is applied — a `SHADDA`+`FATHA`
+/// input and a `FATHA`+`SHADDA` input both collapse to `FATHA` alone.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when `text` contains no shadda; otherwise
+/// allocates one `String` with the capacity of the input, copies the prefix before the first shadda
+/// with a single `push_str`, and filters the remainder.
+///
+/// # Parity
+///
+/// Same result as upstream for every input: upstream removes plain `U+0651`; its `is_vocalized`
+/// guard cannot change the outcome (a lone shadda still counts as vocalization).
+#[must_use]
+pub fn strip_shadda(text: &str) -> Cow<'_, str> {
+    strip_by(text, |_, ch| is_shadda(ch))
+}
+
+/// Removes every shadda from `text` and writes the result into `out`.
+///
+/// Mirrors `PyArabic` `araby.strip_shadda`, but reuses a caller-owned buffer instead of returning a
+/// new string, which keeps hot loops free of allocations (`AGENTS.md` §3.3, §3.6).
+///
+/// `out` is **cleared first** and then replaced with the stripped text; the function returns `out` so
+/// calls can be chained.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::strip_shadda_into;
+///
+/// let mut buffer = String::from("stale content");
+/// strip_shadda_into("الشَّمْس", &mut buffer);
+/// assert_eq!(buffer, "الشَمْس");
+///
+/// // The buffer is returned, so calls can be chained:
+/// let mut other = String::new();
+/// strip_shadda_into("الشَّمْس", &mut other).push('!');
+/// assert_eq!(other, "الشَمْس!");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The removed and kept code points are exactly those documented on [`strip_shadda`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
+/// shadda is found, so repeated calls with clean input reuse the existing capacity.
+pub fn strip_shadda_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    strip_by_into(text, out, |_, ch| is_shadda(ch))
+}
+
 /// Removes every tanwīn mark and, at most, one trailing ḥaraka from `text`, keeping shadda.
 ///
 /// Mirrors `PyArabic` `araby.strip_lastharaka` — note the upstream spelling (`..._haraka`, not
@@ -470,8 +558,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_tashkeel,
-        strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
+        strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
+        strip_shadda_into, strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
     };
     use crate::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel, is_tatweel};
     use crate::unicode::{constants, tables};
@@ -1370,5 +1458,238 @@ mod tests {
                 "counterexample: {input:?}"
             );
         }
+    }
+
+    /// `(input, expected)` pairs for `strip_shadda`, in the same escape convention as `CASES`.
+    ///
+    /// This is the exact complement of `strip_tatweel`: only the shadda (`U+0651`) goes, while every
+    /// ḥaraka and tanwīn mark, tatweel, ligature, formatting code point and digit is preserved. The
+    /// two mark orders (shadda before or after its ḥaraka) must collapse to the same string.
+    const SHADDA_CASES: &[(&str, &str)] = &[
+        // E1 — empty input; E2 — whitespace only.
+        ("", ""),
+        ("   \t\n", "   \t\n"),
+        // E3 — a shadda with no base letter disappears; a ḥaraka beside it survives.
+        ("\u{0651}", ""),
+        ("\u{064E}\u{0651}", "\u{064E}"),
+        // E4 — orphan ḥaraka before a letter.
+        ("\u{064E}\u{0628}", "\u{064E}\u{0628}"),
+        // E5 — shadda before the ḥaraka (الشَّمْس) ...
+        (
+            "\u{0627}\u{0644}\u{0634}\u{0651}\u{064E}\u{0645}\u{0652}\u{0633}",
+            "\u{0627}\u{0644}\u{0634}\u{064E}\u{0645}\u{0652}\u{0633}",
+        ),
+        // E5 — ... and after it: both orders yield the same string.
+        (
+            "\u{0627}\u{0644}\u{0634}\u{064E}\u{0651}\u{0645}\u{0652}\u{0633}",
+            "\u{0627}\u{0644}\u{0634}\u{064E}\u{0645}\u{0652}\u{0633}",
+        ),
+        // A shadda with no ḥaraka simply vanishes: مُحَمَّد → محمد.
+        (
+            "\u{0645}\u{062D}\u{0645}\u{0651}\u{062F}",
+            "\u{0645}\u{062D}\u{0645}\u{062F}",
+        ),
+        // E6 — tatweel is a joiner, not a mark, so it survives.
+        ("\u{0628}\u{0640}\u{062A}", "\u{0628}\u{0640}\u{062A}"),
+        // E7 — mixed script.
+        (
+            "\u{0639}\u{0651}\u{0631}\u{0628} Book",
+            "\u{0639}\u{0631}\u{0628} Book",
+        ),
+        // E8 — digits of the three sets.
+        (
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+        ),
+        // E9 — punctuation; E10 — astral characters.
+        (
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+        ),
+        // E11–E13 — joiners, directional marks and BOM; the shadda next to them still goes.
+        (
+            "\u{0628}\u{200D}\u{062A}\u{0651}",
+            "\u{0628}\u{200D}\u{062A}",
+        ),
+        (
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        (
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        // E14–E16 — a shadda on a ligature goes, the ligature stays; forms pass through.
+        ("\u{FE8D}\u{FE8E}", "\u{FE8D}\u{FE8E}"),
+        ("\u{FEFB}\u{0651}", "\u{FEFB}"),
+        // E17 — line terminators preserved exactly.
+        (
+            "\u{0623}\u{0651}\u{0628}\r\n\u{062A}",
+            "\u{0623}\u{0628}\r\n\u{062A}",
+        ),
+        (
+            "\u{0623}\u{0651}\u{0628}\n\u{062A}",
+            "\u{0623}\u{0628}\n\u{062A}",
+        ),
+        // E19 — stacked shaddas all go.
+        ("\u{0651}\u{0651}", ""),
+        ("\u{0628}\u{0651}\u{0651}", "\u{0628}"),
+        // E20 — no normalization is applied.
+        ("\u{0627}\u{0654}", "\u{0627}\u{0654}"),
+    ];
+
+    #[test]
+    fn strip_shadda_matches_the_case_table() {
+        for &(input, expected) in SHADDA_CASES {
+            assert_eq!(strip_shadda(input), expected, "input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn strip_shadda_removes_exactly_the_shadda_and_nothing_else() {
+        for code in 0x0600u32..=0x06FF {
+            let Some(c) = char::from_u32(code) else {
+                continue;
+            };
+            let input = c.to_string();
+            assert_eq!(
+                strip_shadda(&input).is_empty(),
+                is_shadda(c),
+                "U+{code:04X} must be removed only when it is shadda"
+            );
+        }
+
+        // Nothing outside the block is touched either.
+        for kept in [
+            "\u{064E}",
+            "\u{0640}",
+            "\u{0670}",
+            "\u{06E5}",
+            "\u{06E6}",
+            "\u{0653}",
+            "\u{0654}",
+            "\u{0655}",
+            "\u{0300}",
+            "\u{FEFB}",
+            "a",
+            "\u{1F389}",
+        ] {
+            assert_eq!(strip_shadda(kept), kept, "{kept:?} must be kept");
+        }
+    }
+
+    #[test]
+    fn strip_shadda_keeps_every_other_mark() {
+        assert_eq!(tables::HARAKAT.len(), 7, "the marks this function spares");
+        for &mark in tables::HARAKAT {
+            let alone = mark.to_string();
+            assert_eq!(strip_shadda(&alone), alone, "{mark:?} must be kept");
+
+            let word = format!("\u{0628}{mark}\u{062A}");
+            assert_eq!(strip_shadda(&word), word, "{mark:?} inside a word");
+        }
+    }
+
+    #[test]
+    fn strip_shadda_borrows_input_without_a_shadda() {
+        for clean in [
+            "",
+            "\u{0628}\u{064E}\u{062A}",
+            "\u{0645}\u{064F}\u{062D}\u{064E}\u{0645}\u{064E}\u{062F}",
+            "\u{FEFB}",
+            "\u{1F389}",
+        ] {
+            assert!(
+                matches!(strip_shadda(clean), Cow::Borrowed(_)),
+                "nothing to remove in {clean:?}"
+            );
+        }
+        assert!(
+            matches!(strip_shadda("\u{0628}\u{0651}"), Cow::Owned(_)),
+            "a shadda forces an allocation"
+        );
+    }
+
+    #[test]
+    fn strip_shadda_removes_only_the_shadda_own_bytes() {
+        let input = "\u{0628}\u{0651}\u{1F389}\u{0651}";
+        let output = strip_shadda(input);
+
+        assert_eq!(output, "\u{0628}\u{1F389}");
+        assert_eq!(
+            input.len() - output.len(),
+            4,
+            "two two-byte shaddas were removed"
+        );
+        assert!(
+            input.is_char_boundary(input.len()),
+            "no code point is split"
+        );
+    }
+
+    #[test]
+    fn strip_shadda_and_strip_harakat_partition_tashkeel() {
+        // `strip_harakat` keeps exactly the shaddas that `strip_shadda` removes, so composing them in
+        // either order must equal `strip_tashkeel` (`AGENTS.md` §4.5 property 4).
+        for &(input, _) in CASES
+            .iter()
+            .chain(HARAKAT_CASES)
+            .chain(LASTHARAKA_CASES)
+            .chain(SHADDA_CASES)
+            .chain(TATWEEL_CASES)
+        {
+            assert_eq!(
+                strip_shadda(&strip_harakat(input)),
+                strip_tashkeel(input),
+                "harakat then shadda: {input:?}"
+            );
+            assert_eq!(
+                strip_harakat(&strip_shadda(input)),
+                strip_tashkeel(input),
+                "shadda then harakat: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_shadda_and_strip_tatweel_touch_disjoint_classes() {
+        for &(input, _) in SHADDA_CASES.iter().chain(TATWEEL_CASES) {
+            assert_eq!(
+                strip_shadda(&strip_tatweel(input)),
+                strip_tatweel(&strip_shadda(input)),
+                "counterexample: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_shadda_matches_the_word_spelled_out_in_the_documentation() {
+        // Pins the escape spelling of the doc example (الشَّمْس): the shadda goes, its ḥaraka stays.
+        let vocalized = "\u{0627}\u{0644}\u{0634}\u{0651}\u{064E}\u{0645}\u{0652}\u{0633}";
+        assert_eq!(
+            strip_shadda(vocalized),
+            "\u{0627}\u{0644}\u{0634}\u{064E}\u{0645}\u{0652}\u{0633}"
+        );
+        // The same word with the marks in the other order collapses to the same string.
+        let haraka_first = "\u{0627}\u{0644}\u{0634}\u{064E}\u{0651}\u{0645}\u{0652}\u{0633}";
+        assert_eq!(strip_shadda(haraka_first), strip_shadda(vocalized));
+    }
+
+    #[test]
+    fn strip_shadda_into_clears_the_buffer_and_matches_the_case_table() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, expected) in SHADDA_CASES {
+            strip_shadda_into(input, &mut buffer);
+            assert_eq!(buffer, expected, "input: {input:?}");
+        }
+
+        strip_shadda_into("\u{0628}\u{0651}\u{062A}", &mut buffer);
+        assert_eq!(buffer, "\u{0628}\u{062A}");
+        strip_shadda_into("", &mut buffer);
+        assert_eq!(buffer, "");
+
+        // The buffer is returned, so calls can be chained.
+        strip_shadda_into("\u{0628}\u{0651}", &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0628}!");
     }
 }
