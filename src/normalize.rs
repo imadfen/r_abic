@@ -19,7 +19,7 @@
 
 use std::borrow::Cow;
 
-use crate::unicode::classify::is_tashkeel;
+use crate::unicode::classify::{is_haraka, is_tashkeel};
 
 /// Removes every ḥaraka and shadda (`TASHKEEL`) from `text`, leaving all other characters alone.
 ///
@@ -66,17 +66,7 @@ use crate::unicode::classify::is_tashkeel;
 /// to its `araby` counterpart.
 #[must_use]
 pub fn strip_tashkeel(text: &str) -> Cow<'_, str> {
-    let Some(first) = first_mark(text) else {
-        return Cow::Borrowed(text);
-    };
-
-    // `first` comes from `char_indices()`, so slicing at it can never split a code point.
-    debug_assert!(text.is_char_boundary(first));
-
-    let mut out = String::with_capacity(text.len());
-    out.push_str(&text[..first]);
-    push_unmarked(&text[first..], &mut out);
-    Cow::Owned(out)
+    strip_by(text, is_tashkeel)
 }
 
 /// Removes every ḥaraka and shadda from `text` and writes the result into `out`.
@@ -115,9 +105,42 @@ pub fn strip_tashkeel(text: &str) -> Cow<'_, str> {
 /// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
 /// mark is actually found, so repeated calls with clean input reuse the existing capacity.
 pub fn strip_tashkeel_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    strip_by_into(text, out, is_tashkeel)
+}
+
+/// Removes every character `is_stripped` accepts, borrowing `text` when there is nothing to remove.
+///
+/// This is the single implementation behind the `strip_*` family (`AGENTS.md` §3.5): scan for the
+/// first character that must go, copy the clean prefix with one `push_str`, then filter the rest.
+/// The predicate is a generic parameter, not a `fn` pointer, so each caller gets its own inlined copy.
+fn strip_by<F>(text: &str, is_stripped: F) -> Cow<'_, str>
+where
+    F: Fn(char) -> bool,
+{
+    let Some(first) = first_stripped(text, &is_stripped) else {
+        return Cow::Borrowed(text);
+    };
+
+    // `first` comes from `char_indices()`, so slicing at it can never split a code point.
+    debug_assert!(text.is_char_boundary(first));
+
+    let mut out = String::with_capacity(text.len());
+    out.push_str(&text[..first]);
+    push_kept(&text[first..], &mut out, &is_stripped);
+    Cow::Owned(out)
+}
+
+/// `strip_by` into a caller-owned buffer: clears `out`, then writes the stripped text and returns it.
+///
+/// Memory is reserved only when something is actually removed, so repeated calls with clean input
+/// reuse the capacity the buffer already has (`AGENTS.md` §3.3, §3.6).
+fn strip_by_into<'a, F>(text: &str, out: &'a mut String, is_stripped: F) -> &'a mut String
+where
+    F: Fn(char) -> bool,
+{
     out.clear();
 
-    match first_mark(text) {
+    match first_stripped(text, &is_stripped) {
         // Nothing to remove: copy the input and keep whatever capacity the buffer already has.
         None => out.push_str(text),
         Some(first) => {
@@ -125,31 +148,128 @@ pub fn strip_tashkeel_into<'a>(text: &str, out: &'a mut String) -> &'a mut Strin
 
             out.reserve(text.len());
             out.push_str(&text[..first]);
-            push_unmarked(&text[first..], out);
+            push_kept(&text[first..], out, &is_stripped);
         }
     }
 
     out
 }
 
-/// Returns the byte offset of the first tashkeel mark in `text`, if it has one.
+/// Removes every ḥaraka (`HARAKAT`) from `text` and **keeps shadda**.
+///
+/// Mirrors `PyArabic` `araby.strip_harakat`: the "drop the short vowels but remember the gemination"
+/// counterpart of [`strip_tashkeel`].
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+/// use r_abic::normalize::strip_harakat;
+///
+/// assert_eq!(strip_harakat("الْعَرَبِيَّةُ"), "العربيّة");
+///
+/// // A shadda is not a ḥaraka, so it survives …
+/// assert_eq!(strip_harakat("الشَّمْس"), "الشّمس");
+/// // … which is exactly when this function does not have to allocate:
+/// assert!(matches!(strip_harakat("الشّمس"), Cow::Borrowed(_)));
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`, so it is always a
+/// `char` boundary (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// Removes exactly the seven `HARAKAT` code points — the three tanwīn marks (`U+064B`–`U+064D`), the
+/// three short vowels (`U+064E`–`U+0650`) and sukūn (`U+0652`). Shadda (`U+0651`), tatweel,
+/// superscript alef (`U+0670`), small waw/yeh (`U+06E5`/`U+06E6`), madda and the combining hamzas
+/// (`U+0653`–`U+0655`), presentation forms (including the lam-alef ligatures), digits, punctuation,
+/// formatting code points and everything outside Arabic pass through unchanged; removing those is
+/// `strip_tashkeel`'s, `strip_diacritics`'s or `unshape`'s job. Marks are never reordered, and no
+/// normalization form is applied: NFC and NFD input stay exactly as the caller supplied it.
+///
+/// The difference from [`strip_tashkeel`] is exactly one code point: the shadda.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when `text` carries no ḥaraka — including a
+/// shadda-only word, the case that separates this function from [`strip_tashkeel`]; otherwise
+/// allocates one `String` with the capacity of the input, copies the prefix before the first mark
+/// with a single `push_str`, and filters the remainder.
+///
+/// # Parity
+///
+/// Same result as upstream for every input. Upstream also guards the work with its `is_vocalized`
+/// check, which cannot change the outcome: a text without `HARAKAT` has nothing to remove.
+#[must_use]
+pub fn strip_harakat(text: &str) -> Cow<'_, str> {
+    strip_by(text, is_haraka)
+}
+
+/// Removes every ḥaraka from `text` and writes the result into `out`, keeping shadda.
+///
+/// Mirrors `PyArabic` `araby.strip_harakat`, but reuses a caller-owned buffer instead of returning a
+/// new string, which keeps hot loops free of allocations (`AGENTS.md` §3.3, §3.6).
+///
+/// `out` is **cleared first** and then replaced with the stripped text; the function returns `out` so
+/// calls can be chained.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::strip_harakat_into;
+///
+/// let mut buffer = String::from("stale content");
+/// strip_harakat_into("الْعَرَبِيَّةُ", &mut buffer);
+/// assert_eq!(buffer, "العربيّة");
+///
+/// // The buffer is returned, so calls can be chained:
+/// let mut other = String::new();
+/// strip_harakat_into("كِتَابٌ", &mut other).push('!');
+/// assert_eq!(other, "كتاب!");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The removed and kept code points are exactly those documented on [`strip_harakat`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
+/// ḥaraka is actually found, so repeated calls with clean input reuse the existing capacity.
+pub fn strip_harakat_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    strip_by_into(text, out, is_haraka)
+}
+
+/// Returns the byte offset of the first character in `text` that `is_stripped` accepts, if any.
 ///
 /// The offset comes from `char_indices()`, so it is always a `char` boundary and can be used for
 /// slicing without further checks (`AGENTS.md` §3.5).
-fn first_mark(text: &str) -> Option<usize> {
+fn first_stripped<F>(text: &str, is_stripped: &F) -> Option<usize>
+where
+    F: Fn(char) -> bool,
+{
     text.char_indices()
-        .find_map(|(index, ch)| is_tashkeel(ch).then_some(index))
+        .find_map(|(index, ch)| is_stripped(ch).then_some(index))
 }
 
-/// Appends every character of `text` that is not a tashkeel mark to `out`.
-fn push_unmarked(text: &str, out: &mut String) {
-    out.extend(text.chars().filter(|ch| !is_tashkeel(*ch)));
+/// Appends every character of `text` that `is_stripped` rejects to `out`.
+fn push_kept<F>(text: &str, out: &mut String, is_stripped: &F)
+where
+    F: Fn(char) -> bool,
+{
+    out.extend(text.chars().filter(|ch| !is_stripped(*ch)));
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{strip_tashkeel, strip_tashkeel_into};
-    use crate::unicode::classify::is_tashkeel;
+    use super::{strip_harakat, strip_harakat_into, strip_tashkeel, strip_tashkeel_into};
+    use crate::unicode::classify::{is_haraka, is_shadda, is_tashkeel};
     use crate::unicode::{constants, tables};
     use std::borrow::Cow;
 
@@ -265,6 +385,86 @@ mod tests {
             assert_eq!(strip_tashkeel(input), expected, "input: {input:?}");
         }
     }
+
+    /// `(input, expected)` pairs for `strip_harakat`, written in the same escape convention as
+    /// `CASES` (see the note there) and deliberately laid out next to the `strip_tashkeel` rows so the
+    /// shadda cases stand out: `strip_harakat` keeps `U+0651`, `strip_tashkeel` removes it.
+    const HARAKAT_CASES: &[(&str, &str)] = &[
+        // E1 — empty input.
+        ("", ""),
+        // E2 — whitespace only.
+        ("   \t\n", "   \t\n"),
+        // E3 — marks with no base letter: only the shadda survives.
+        ("\u{064E}\u{0651}", "\u{0651}"),
+        ("\u{064B}\u{064C}\u{064D}", ""),
+        // E4 — text beginning with an orphan ḥaraka.
+        ("\u{064E}\u{0628}", "\u{0628}"),
+        // E5 — shadda before the ḥaraka …
+        (
+            "\u{0627}\u{0644}\u{0634}\u{0651}\u{064E}\u{0645}\u{0633}",
+            "\u{0627}\u{0644}\u{0634}\u{0651}\u{0645}\u{0633}",
+        ),
+        // E5 — … and after it: identical result, shadda in place.
+        (
+            "\u{0627}\u{0644}\u{0634}\u{064E}\u{0651}\u{0645}\u{0633}",
+            "\u{0627}\u{0644}\u{0634}\u{0651}\u{0645}\u{0633}",
+        ),
+        // E6 — tatweel is a joiner, not a ḥaraka.
+        (
+            "\u{0627}\u{0644}\u{0639}\u{0640}\u{0640}\u{0631}\u{0628}\u{064A}\u{0629}",
+            "\u{0627}\u{0644}\u{0639}\u{0640}\u{0640}\u{0631}\u{0628}\u{064A}\u{0629}",
+        ),
+        // E7 — mixed script.
+        (
+            "\u{0639}\u{064E}\u{0631}\u{0628}\u{064A}\u{0629} Book",
+            "\u{0639}\u{0631}\u{0628}\u{064A}\u{0629} Book",
+        ),
+        // E8 — digits of all three sets.
+        (
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+        ),
+        // E9 — Arabic and ASCII punctuation.
+        (
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{0643}\u{064A}\u{0641}\u{061F}",
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{0643}\u{064A}\u{0641}\u{061F}",
+        ),
+        // E10 — astral characters.
+        (
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627} \u{1F389}",
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627} \u{1F389}",
+        ),
+        // E11–E13 — joiners, directional marks and BOM.
+        ("\u{0628}\u{200D}\u{062A}", "\u{0628}\u{200D}\u{062A}"),
+        (
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        (
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        // E15/E16 — a ligature is not a ḥaraka, and a shadda attached to one stays attached.
+        ("\u{FEFB}\u{0651}", "\u{FEFB}\u{0651}"),
+        // E17 — line terminators preserved exactly.
+        ("\u{0623}\r\n\u{0628}", "\u{0623}\r\n\u{0628}"),
+        // E19 — stacked ḥarakāt all go, stacked shaddas all stay.
+        ("\u{064E}\u{064E}", ""),
+        ("\u{0651}\u{0651}", "\u{0651}\u{0651}"),
+        // E19 — the realistic word: الْعَرَبِيَّةُ → العربيّة (upstream's own docstring example).
+        (
+            "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}\u{064F}",
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0651}\u{0629}",
+        ),
+        // E20 — no normalization: NFC and NFD spellings stay distinct.
+        ("\u{0627}\u{0654}", "\u{0627}\u{0654}"),
+        // Superscript alef, small waw/yeh and the combining marks survive (not ḥarakāt).
+        ("\u{06E5}\u{0652}\u{06E6}", "\u{06E5}\u{06E6}"),
+        (
+            "\u{0653}\u{0654}\u{0655}\u{064F}",
+            "\u{0653}\u{0654}\u{0655}",
+        ),
+    ];
 
     #[test]
     fn clean_input_is_borrowed_and_marked_input_is_owned() {
@@ -422,6 +622,152 @@ mod tests {
 
         strip_tashkeel_into("cleaner text", &mut buffer);
         assert_eq!(buffer, "cleaner text");
+    }
+
+    #[test]
+    fn strip_harakat_matches_the_case_table() {
+        for &(input, expected) in HARAKAT_CASES {
+            assert_eq!(strip_harakat(input), expected, "input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn strip_harakat_keeps_shadda_and_borrows_such_input() {
+        for shadda_only in [
+            "\u{0651}",
+            "\u{0651}\u{0651}",
+            "\u{0627}\u{0644}\u{0634}\u{0651}\u{0645}\u{0633}",
+        ] {
+            assert_eq!(
+                strip_harakat(shadda_only),
+                shadda_only,
+                "input: {shadda_only:?}"
+            );
+            assert!(
+                matches!(strip_harakat(shadda_only), Cow::Borrowed(_)),
+                "shadda is not a ḥaraka, so nothing is removed and nothing is allocated: \
+                 {shadda_only:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_harakat_removes_exactly_the_harakat_class_and_nothing_else() {
+        for code in 0x0600u32..=0x06FF {
+            let Some(c) = char::from_u32(code) else {
+                continue;
+            };
+            let input = c.to_string();
+            assert_eq!(
+                strip_harakat(&input).is_empty(),
+                is_haraka(c),
+                "U+{code:04X} must be removed only when it is a ḥaraka"
+            );
+        }
+
+        // Shadda is tashkeel but not a ḥaraka; nothing outside the block is touched either.
+        for kept in [
+            "\u{0651}",
+            "\u{0640}",
+            "\u{0670}",
+            "\u{06E5}",
+            "\u{06E6}",
+            "\u{0653}",
+            "\u{0654}",
+            "\u{0655}",
+            "\u{0300}",
+            "a",
+            "\u{1F389}",
+        ] {
+            assert_eq!(strip_harakat(kept), kept, "{kept:?} must be kept");
+        }
+    }
+
+    #[test]
+    fn strip_harakat_and_strip_tashkeel_differ_by_exactly_the_shadda() {
+        assert_eq!(tables::HARAKAT.len(), 7, "the class this function mirrors");
+        for &mark in tables::HARAKAT {
+            let input = mark.to_string();
+            assert!(strip_harakat(&input).is_empty(), "HARAKAT member {mark:?}");
+        }
+        for &mark in tables::TASHKEEL {
+            let input = mark.to_string();
+            let stripped = strip_harakat(&input);
+            assert_eq!(
+                stripped.is_empty(),
+                !is_shadda(mark),
+                "of {mark:?} only the shadda survives strip_harakat"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_harakat_then_strip_tashkeel_equals_strip_tashkeel_alone() {
+        for &(input, _) in CASES.iter().chain(HARAKAT_CASES) {
+            assert_eq!(
+                strip_tashkeel(&strip_harakat(input)),
+                strip_tashkeel(input),
+                "input: {input:?}"
+            );
+            assert_eq!(
+                strip_harakat(&strip_tashkeel(input)),
+                strip_tashkeel(input),
+                "input: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_harakat_is_idempotent() {
+        for &(input, _) in HARAKAT_CASES {
+            let once = strip_harakat(input);
+            let twice = strip_harakat(&once);
+            assert_eq!(once, twice, "input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn strip_harakat_removes_only_the_harakat_own_bytes() {
+        let input = "\u{0645}\u{064F}\u{0651}";
+        let output = strip_harakat(input);
+
+        assert_eq!(output, "\u{0645}\u{0651}");
+        assert_eq!(input.len() - output.len(), 2, "only the damma is two bytes");
+    }
+
+    #[test]
+    fn strip_harakat_into_clears_the_buffer_and_matches_the_case_table() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, expected) in HARAKAT_CASES {
+            strip_harakat_into(input, &mut buffer);
+            assert_eq!(buffer, expected, "input: {input:?}");
+        }
+
+        strip_harakat_into("\u{0645}\u{064F}\u{0651}", &mut buffer);
+        assert_eq!(
+            buffer, "\u{0645}\u{0651}",
+            "shadda survives, damma does not"
+        );
+        strip_harakat_into("", &mut buffer);
+        assert_eq!(buffer, "");
+
+        // The buffer is returned, so calls can be chained.
+        strip_harakat_into("\u{0645}\u{064F}", &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0645}!");
+    }
+
+    #[test]
+    fn strip_harakat_matches_the_words_spelled_out_in_the_documentation() {
+        // The doc examples spell these words in Arabic script; pinning them with escapes means a
+        // hand-typed mark can never silently change what the documentation promises.
+        let muhammad = "\u{0645}\u{064F}\u{062D}\u{064E}\u{0645}\u{0651}\u{064E}\u{062F}\u{064C}";
+        let kitab = "\u{0643}\u{0650}\u{062A}\u{064E}\u{0627}\u{0628}\u{064C}";
+
+        assert_eq!(
+            strip_harakat(muhammad),
+            "\u{0645}\u{062D}\u{0645}\u{0651}\u{062F}"
+        );
+        assert_eq!(strip_harakat(kitab), "\u{0643}\u{062A}\u{0627}\u{0628}");
     }
 
     #[test]

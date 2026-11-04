@@ -81,7 +81,7 @@ Everything below was re-verified on 2026-11-03 against a local `tools/oracle/` c
 | Upstream symbol | `r_abic` symbol | Status | Notes |
 |---|---|---|---|
 | `strip_tashkeel(text)` | `normalize::strip_tashkeel` (+ `strip_tashkeel_into`) | done | `Cow` fast path + `_into` buffer reuse; pinned by 10 unit + 4 property + 8 integration tests + 3 doctests; bench `benches/normalize.rs` |
-| `strip_harakat(text)` | `normalize::strip_harakat` | todo | verified: removes the 7 `HARAKAT` marks and **keeps shadda**; upstream guards the work with `is_vocalized` |
+| `strip_harakat(text)` | `normalize::strip_harakat` (+ `strip_harakat_into`) | done | verified: removes the 7 `HARAKAT` marks and **keeps shadda** — upstream's `is_vocalized` guard cannot change the result; pinned by 9 unit + 3 integration + 5 property tests and 2 doctests; bench `benches/normalize.rs` |
 | `strip_lastharaka(text)` | `normalize::strip_lastharaka` | todo | verified: removes **every `TANWIN` mark plus one trailing `HARAKAT`** (`[HARAKAT]$|[TANWIN]`), guarded by `is_vocalized`; upstream spelling kept, `#[doc(alias = "strip_last_haraka")]` |
 | `strip_tatweel(text)` | `normalize::strip_tatweel` | todo | verified: plain removal of `U+0640` |
 | `strip_shadda(text)` | `normalize::strip_shadda` | todo | verified: plain removal of `U+0651` (no `is_vocalized` guard) |

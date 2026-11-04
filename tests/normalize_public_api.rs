@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use r_abic::normalize::{strip_tashkeel, strip_tashkeel_into};
+use r_abic::normalize::{strip_harakat, strip_harakat_into, strip_tashkeel, strip_tashkeel_into};
 use r_abic::unicode::classify;
 
 /// الْعَرَبِيَّةُ — al-ʿarabiyya, spelled out as letters + marks.
@@ -92,6 +92,48 @@ fn no_normalization_form_is_applied() {
         strip_tashkeel(nfd),
         "marks are never reordered or recomposed (`AGENTS.md` §3.5)"
     );
+}
+
+#[test]
+fn strip_harakat_keeps_shadda_where_strip_tashkeel_removes_it() {
+    // الشَّمْس — letters + shadda + ḥaraka, the two spellings of the same mark order.
+    let shadda_first = "\u{0627}\u{0644}\u{0634}\u{0651}\u{064E}\u{0645}\u{0633}";
+    let fatha_first = "\u{0627}\u{0644}\u{0634}\u{064E}\u{0651}\u{0645}\u{0633}";
+    let with_shadda = "\u{0627}\u{0644}\u{0634}\u{0651}\u{0645}\u{0633}";
+    let plain = "\u{0627}\u{0644}\u{0634}\u{0645}\u{0633}";
+
+    assert_eq!(strip_harakat(shadda_first), with_shadda);
+    assert_eq!(strip_harakat(fatha_first), with_shadda);
+    assert_eq!(strip_tashkeel(shadda_first), plain);
+
+    // Nothing to remove in a shadda-only word: the borrowing variant is taken.
+    assert!(matches!(strip_harakat(with_shadda), Cow::Borrowed(_)));
+}
+
+#[test]
+fn strip_harakat_leaves_the_word_partially_vocalized() {
+    assert_eq!(
+        strip_harakat(VOCALIZED_WORD),
+        "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0651}\u{0629}"
+    );
+}
+
+#[test]
+fn strip_harakat_into_can_reuse_one_buffer_across_a_document() {
+    let mut buffer = String::new();
+
+    for (word, expected) in [
+        (
+            VOCALIZED_WORD,
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0651}\u{0629}",
+        ),
+        (PLAIN_WORD, PLAIN_WORD),
+        ("\u{0645}\u{064F}\u{0651}", "\u{0645}\u{0651}"),
+    ] {
+        strip_harakat_into(word, &mut buffer);
+
+        assert_eq!(buffer, expected, "word: {word:?}");
+    }
 }
 
 #[test]

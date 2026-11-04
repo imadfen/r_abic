@@ -4,13 +4,14 @@ Arabic text processing library for Rust, inspired by
 [PyArabic](https://github.com/linuxscout/pyarabic).
 
 > Status: **Phase 1** (in progress) — the `unicode` module (code points, class tables, classification
-> predicates) and `normalize::strip_tashkeel` are implemented. The remaining transforms, tokenization,
-> unshaping, transliteration and numbers follow; see [`AGENTS.md`](AGENTS.md) §6.
+> predicates) and the first members of the `normalize` strip family (`strip_tashkeel`, `strip_harakat`)
+> are implemented. The remaining transforms, tokenization, unshaping, transliteration and numbers
+> follow; see [`AGENTS.md`](AGENTS.md) §6.
 
 ## Quick start
 
 ```rust
-use r_abic::normalize::strip_tashkeel;
+use r_abic::normalize::{strip_harakat, strip_tashkeel};
 use r_abic::unicode::{classify, constants, tables};
 
 // Code points are exposed under their PyArabic names.
@@ -29,6 +30,9 @@ assert!(matches!(
     strip_tashkeel("العربية"),
     std::borrow::Cow::Borrowed(_)
 ));
+
+// `strip_harakat` is the same, except that the shadda survives.
+assert_eq!(strip_harakat("الْعَرَبِيَّةُ"), "العربيّة");
 ```
 
 ## Build
