@@ -8,7 +8,8 @@ use std::borrow::Cow;
 
 use r_abic::normalize::{
     strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
-    strip_shadda_into, strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
+    strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
+    strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify;
 
@@ -308,6 +309,50 @@ fn strip_shadda_into_can_reuse_one_buffer() {
         (PLAIN_WORD, PLAIN_WORD),
     ] {
         strip_shadda_into(word, &mut buffer);
+
+        assert_eq!(buffer, expected, "word: {word:?}");
+    }
+}
+
+#[test]
+fn strip_small_removes_only_the_small_letters() {
+    // الرَّحْمَٰن → الرَّحْمَن: the superscript alef goes and every other mark stays.
+    let vocalized =
+        "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0670}\u{0646}";
+    assert_eq!(
+        strip_small(vocalized),
+        "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0646}"
+    );
+    assert!(matches!(strip_small("\u{0670}"), Cow::Owned(_)));
+
+    // All three small letters collapse to nothing.
+    assert_eq!(strip_small("\u{0670}\u{06E5}\u{06E6}"), "");
+}
+
+#[test]
+fn strip_small_leaves_tashkeel_tatweel_and_latin_untouched() {
+    // The small class is disjoint from tashkeel and tatweel.
+    assert_eq!(
+        strip_small("\u{0628}\u{064E}\u{0651}\u{0640}\u{062A}"),
+        "\u{0628}\u{064E}\u{0651}\u{0640}\u{062A}"
+    );
+    assert_eq!(strip_small("Book \u{FEFB}"), "Book \u{FEFB}");
+
+    // Nothing to remove: the input is borrowed, and no normalization form is applied.
+    assert!(matches!(strip_small(PLAIN_WORD), Cow::Borrowed(_)));
+    assert!(matches!(strip_small(""), Cow::Borrowed("")));
+}
+
+#[test]
+fn strip_small_into_can_reuse_one_buffer() {
+    let mut buffer = String::new();
+
+    for (word, expected) in [
+        ("\u{0628}\u{0670}", "\u{0628}"),
+        ("\u{0628}\u{06E5}\u{06E6}", "\u{0628}"),
+        (PLAIN_WORD, PLAIN_WORD),
+    ] {
+        strip_small_into(word, &mut buffer);
 
         assert_eq!(buffer, expected, "word: {word:?}");
     }

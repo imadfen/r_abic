@@ -5,8 +5,8 @@ Arabic text processing library for Rust, inspired by
 
 > Status: **Phase 1** (in progress) — the `unicode` module (code points, class tables, classification
 > predicates) and the `normalize` strip family (`strip_tashkeel`, `strip_harakat`, `strip_lastharaka`,
-> `strip_tatweel`, `strip_shadda`) are implemented. The remaining transforms, tokenization, unshaping,
-> transliteration and numbers follow; see [`AGENTS.md`](AGENTS.md) §6.
+> `strip_tatweel`, `strip_shadda`, `strip_small`) are implemented. The remaining transforms,
+> tokenization, unshaping, transliteration and numbers follow; see [`AGENTS.md`](AGENTS.md) §6.
 
 ## Quick start
 

@@ -11,9 +11,9 @@ use std::hint::black_box;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 use r_abic::normalize::{
-    strip_harakat, strip_lastharaka, strip_shadda, strip_tashkeel, strip_tatweel,
+    strip_harakat, strip_lastharaka, strip_shadda, strip_small, strip_tashkeel, strip_tatweel,
 };
-use r_abic::unicode::constants::TATWEEL;
+use r_abic::unicode::constants::{SMALL_ALEF, TATWEEL};
 
 /// A fully vocalized sentence: the realistic worst case, where nearly every letter carries a mark.
 const VOCALIZED: &str = "الْعَرَبِيَّةُ لُغَةٌ جَمِيلَةٌ وَاسِعَةُ الِانْتِشَارِ";
@@ -37,13 +37,14 @@ fn sizes(unit: &str, clean: &str) -> [(&'static str, String); 4] {
     ]
 }
 
-/// A kashida after every letter: the worst case for `strip_tatweel`, since the shared [`VOCALIZED`]
-/// unit contains no `U+0640` and would only ever exercise the zero-copy path.
-fn kashida_stretched(unit: &str) -> String {
+/// Interleaves `filler` after every character of `unit`: the worst case for a transform that removes
+/// `filler`, when the shared [`VOCALIZED`] unit does not contain it and the bench would otherwise
+/// only ever exercise the zero-copy path.
+fn interleave(unit: &str, filler: char) -> String {
     let mut out = String::with_capacity(unit.len() * 2);
     for ch in unit.chars() {
         out.push(ch);
-        out.push(TATWEEL);
+        out.push(filler);
     }
     out
 }
@@ -101,12 +102,17 @@ fn bench_strip_lastharaka(c: &mut Criterion) {
 }
 
 fn bench_strip_tatweel(c: &mut Criterion) {
-    let stretched = kashida_stretched(VOCALIZED);
+    let stretched = interleave(VOCALIZED, TATWEEL);
     sweep_sizes(c, "strip_tatweel", strip_tatweel, &sizes(&stretched, PLAIN));
 }
 
 fn bench_strip_shadda(c: &mut Criterion) {
     sweep(c, "strip_shadda", strip_shadda);
+}
+
+fn bench_strip_small(c: &mut Criterion) {
+    let dotted = interleave(VOCALIZED, SMALL_ALEF);
+    sweep_sizes(c, "strip_small", strip_small, &sizes(&dotted, PLAIN));
 }
 
 criterion_group!(
@@ -115,6 +121,7 @@ criterion_group!(
     bench_strip_harakat,
     bench_strip_lastharaka,
     bench_strip_tatweel,
-    bench_strip_shadda
+    bench_strip_shadda,
+    bench_strip_small
 );
 criterion_main!(benches);
