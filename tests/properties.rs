@@ -10,9 +10,9 @@ use std::borrow::Cow;
 
 use common::{ALPHABET, Rng};
 use r_abic::normalize::{
-    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
-    strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
-    strip_tatweel, strip_tatweel_into,
+    strip_diacritics, strip_diacritics_into, strip_harakat, strip_harakat_into, strip_lastharaka,
+    strip_lastharaka_into, strip_shadda, strip_shadda_into, strip_small, strip_small_into,
+    strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify::{
     is_haraka, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
@@ -28,6 +28,24 @@ type Stripper = (
     bool,
 );
 
+/// Mirrors `normalize::strip_diacritics`'s private rule: nonspacing marks (`Mn`) in `U+0600–U+06FE`.
+///
+/// Duplicated here on purpose: the implementation keeps the range table private (upstream has no
+/// `is_diacritic` predicate), so the property suite carries its own oracle and any drift between the
+/// two shows up as a failing assertion.
+fn is_diacritic(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0610}'..='\u{061A}'
+            | '\u{064B}'..='\u{065F}'
+            | '\u{0670}'
+            | '\u{06D6}'..='\u{06DC}'
+            | '\u{06DF}'..='\u{06E4}'
+            | '\u{06E7}'..='\u{06E8}'
+            | '\u{06EA}'..='\u{06ED}'
+    )
+}
+
 /// Every member of the `normalize` strip family. The invariants below are written once and apply to
 /// all of them, so landing a new `strip_*` means adding one row here.
 const STRIPPERS: &[Stripper] = &[
@@ -40,6 +58,12 @@ const STRIPPERS: &[Stripper] = &[
     ("strip_tatweel", strip_tatweel, Some(is_tatweel), true),
     ("strip_shadda", strip_shadda, Some(is_shadda), true),
     ("strip_small", strip_small, Some(is_small), true),
+    (
+        "strip_diacritics",
+        strip_diacritics,
+        Some(is_diacritic),
+        true,
+    ),
 ];
 
 /// Samples per property: enough to hit every class combination of the curated alphabet while keeping
@@ -216,6 +240,13 @@ fn into_variants_agree_with_the_cow_variants() {
 
         strip_small_into(&input, &mut buffer);
         assert_eq!(buffer, strip_small(&input), "strip_small_into: {input:?}");
+
+        strip_diacritics_into(&input, &mut buffer);
+        assert_eq!(
+            buffer,
+            strip_diacritics(&input),
+            "strip_diacritics_into: {input:?}"
+        );
     }
 }
 

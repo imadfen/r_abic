@@ -512,6 +512,117 @@ pub fn strip_small_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
     strip_by_into(text, out, |_, ch| is_small(ch))
 }
 
+/// Returns `true` for the nonspacing marks (`Mn`) of the Arabic block that [`strip_diacritics`]
+/// removes — the set upstream computes from `unicodedata.category`.
+///
+/// Hand-written range table (`P1`): `U+0610`–`U+061A`, `U+064B`–`U+065F`, `U+0670`,
+/// `U+06D6`–`U+06DC`, `U+06DF`–`U+06E4`, `U+06E7`–`U+06E8`, `U+06EA`–`U+06ED`. `U+06E5`/`U+06E6`
+/// are modifier letters (`Lm`) and deliberately excluded; combining marks outside the Arabic block are
+/// excluded too, matching upstream's category-and-range rule.
+const fn is_arabic_nonspacing_mark(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0610}'..='\u{061A}'
+            | '\u{064B}'..='\u{065F}'
+            | '\u{0670}'
+            | '\u{06D6}'..='\u{06DC}'
+            | '\u{06DF}'..='\u{06E4}'
+            | '\u{06E7}'..='\u{06E8}'
+            | '\u{06EA}'..='\u{06ED}'
+    )
+}
+
+/// Removes every Arabic nonspacing mark (`Mn`) from `text` — `tashkeel` plus the Qur'anic marks and
+/// the superscript alef.
+///
+/// Mirrors `PyArabic` `araby.strip_diacritics` (also reachable upstream as
+/// `pyarabic.normalize.strip_diacritics`).
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+/// use r_abic::normalize::strip_diacritics;
+///
+/// // Every mark goes, including the superscript alef: الرَّحْمَٰن → الرحمن.
+/// assert_eq!(strip_diacritics("الرَّحْمَٰن"), "الرحمن");
+///
+/// // With no mark to remove the input is borrowed, not copied:
+/// assert!(matches!(strip_diacritics("الرحمن"), Cow::Borrowed(_)));
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`, so it is always a
+/// `char` boundary (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// Removes exactly the nonspacing marks (`Mn`) of the Arabic block that upstream covers
+/// (`U+0600–U+06FE`): `U+0610`–`U+061A`, `U+064B`–`U+065F`, `U+0670`, `U+06D6`–`U+06DC`,
+/// `U+06DF`–`U+06E4`, `U+06E7`–`U+06E8` and `U+06EA`–`U+06ED`. It therefore supersets
+/// [`strip_tashkeel`] and also removes the Qur'anic marks and the superscript alef (`U+0670`, which
+/// [`strip_small`] removes too). It does **not** remove `U+06E5`/`U+06E6` (modifier letters, `Lm`),
+/// `U+06DD`/`U+06E9` (`Cf`/`So`), tatweel, presentation forms, digits, punctuation, formatting code
+/// points, or combining marks outside the Arabic block (e.g. `U+0300`) — it mirrors upstream's
+/// category-and-range rule exactly. `strip_diacritics` commutes with `strip_small` (they overlap only
+/// on `U+0670`). Marks are never reordered, and no normalization form is applied.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when `text` contains no nonspacing mark;
+/// otherwise allocates one `String` with the capacity of the input, copies the prefix before the
+/// first mark with a single `push_str`, and filters the remainder.
+///
+/// # Parity
+///
+/// Same result as upstream for every input: upstream removes every nonspacing mark (`Mn`) in
+/// `U+0600–U+06FE` via `unicodedata.category`; the hand-written range table reproduces that set with
+/// no dependency (`P1`).
+#[must_use]
+pub fn strip_diacritics(text: &str) -> Cow<'_, str> {
+    strip_by(text, |_, ch| is_arabic_nonspacing_mark(ch))
+}
+
+/// Removes every Arabic nonspacing mark from `text` and writes the result into `out`.
+///
+/// Mirrors `PyArabic` `araby.strip_diacritics`, but reuses a caller-owned buffer instead of returning
+/// a new string, which keeps hot loops free of allocations (`AGENTS.md` §3.3, §3.6).
+///
+/// `out` is **cleared first** and then replaced with the stripped text; the function returns `out` so
+/// calls can be chained.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::strip_diacritics_into;
+///
+/// let mut buffer = String::from("stale content");
+/// strip_diacritics_into("الرَّحْمَٰن", &mut buffer);
+/// assert_eq!(buffer, "الرحمن");
+///
+/// // The buffer is returned, so calls can be chained:
+/// let mut other = String::new();
+/// strip_diacritics_into("الرَّحْمَٰن", &mut other).push('!');
+/// assert_eq!(other, "الرحمن!");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The removed and kept code points are exactly those documented on [`strip_diacritics`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
+/// mark is found, so repeated calls with clean input reuse the existing capacity.
+pub fn strip_diacritics_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    strip_by_into(text, out, |_, ch| is_arabic_nonspacing_mark(ch))
+}
+
 /// Removes every tanwīn mark and, at most, one trailing ḥaraka from `text`, keeping shadda.
 ///
 /// Mirrors `PyArabic` `araby.strip_lastharaka` — note the upstream spelling (`..._haraka`, not
@@ -649,7 +760,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
+        is_arabic_nonspacing_mark, strip_diacritics, strip_diacritics_into, strip_harakat,
+        strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
         strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
         strip_tatweel, strip_tatweel_into,
     };
@@ -1983,6 +2095,205 @@ mod tests {
 
         // The buffer is returned, so calls can be chained.
         strip_small_into("\u{0628}\u{0670}", &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0628}!");
+    }
+
+    /// `(input, expected)` pairs for `strip_diacritics`, in the same escape convention as `CASES`.
+    ///
+    /// `strip_diacritics` removes every nonspacing mark (`Mn`) in `U+0600–U+06FE`; the negative rows
+    /// pin what it must **keep** — `U+06E5`/`U+06E6` (`Lm`), `U+06DD` (`Cf`), `U+06E9` (`So`),
+    /// tatweel and any `Mn` outside the block (`U+0300`).
+    const DIACRITICS_CASES: &[(&str, &str)] = &[
+        // E1 — empty input; E2 — whitespace only.
+        ("", ""),
+        ("   \t\n", "   \t\n"),
+        // The whole tashkeel set plus the superscript alef go: الرَّحْمَٰن → الرحمن.
+        (
+            "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0670}\u{0646}",
+            "\u{0627}\u{0644}\u{0631}\u{062D}\u{0645}\u{0646}",
+        ),
+        // The Qur'anic / extended nonspacing marks are covered too.
+        ("\u{0628}\u{0610}\u{062A}", "\u{0628}\u{062A}"),
+        (
+            "\u{0628}\u{0653}\u{0654}\u{0655}\u{062A}",
+            "\u{0628}\u{062A}",
+        ),
+        ("\u{0628}\u{06D6}\u{06DC}\u{062A}", "\u{0628}\u{062A}"),
+        ("\u{0628}\u{06DF}\u{06ED}", "\u{0628}"),
+        ("\u{0628}\u{06E7}\u{06E8}\u{06EA}", "\u{0628}"),
+        // Negatives: `Lm`, `Cf`, `So` and out-of-block `Mn` are all kept.
+        ("\u{06E5}", "\u{06E5}"),
+        ("\u{06E6}", "\u{06E6}"),
+        ("\u{06DD}", "\u{06DD}"),
+        ("\u{06E9}", "\u{06E9}"),
+        ("\u{0300}", "\u{0300}"),
+        ("\u{0301}", "\u{0301}"),
+        // E3 — mixed marks and letters; only the marks go.
+        (
+            "\u{0645}\u{064E}\u{062D}\u{064E}\u{0645}\u{0651}\u{064E}\u{062F}\u{064C}",
+            "\u{0645}\u{062D}\u{0645}\u{062F}",
+        ),
+        // E6 — tatweel is a joiner, never a diacritic.
+        ("\u{0628}\u{0640}\u{062A}", "\u{0628}\u{0640}\u{062A}"),
+        // E7 — mixed script.
+        ("\u{0645}\u{064E}\u{062D} Book", "\u{0645}\u{062D} Book"),
+        // E8 — digits of the three sets.
+        (
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+        ),
+        // E9 — punctuation; E10 — astral characters.
+        (
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+        ),
+        // E11–E13 — joiners, directional marks and BOM.
+        ("\u{0628}\u{200D}\u{062A}", "\u{0628}\u{200D}\u{062A}"),
+        ("\u{200F}\u{0645}", "\u{200F}\u{0645}"),
+        ("\u{FEFF}\u{0645}", "\u{FEFF}\u{0645}"),
+        // E14–E16 — presentation forms and ligatures pass through; a mark on a ligature still goes.
+        ("\u{FE8D}\u{FE8E}", "\u{FE8D}\u{FE8E}"),
+        ("\u{FEFB}\u{0651}", "\u{FEFB}"),
+        // E17 — line terminators preserved exactly.
+        (
+            "\u{0623}\u{064E}\u{0628}\r\n\u{062A}\u{0652}",
+            "\u{0623}\u{0628}\r\n\u{062A}",
+        ),
+        (
+            "\u{0623}\u{064E}\u{0628}\n\u{062A}\u{0652}",
+            "\u{0623}\u{0628}\n\u{062A}",
+        ),
+        // E19 — stacked marks all go.
+        ("\u{064E}\u{064E}\u{0651}\u{0651}", ""),
+        // E20 — no normalization is applied; the combining hamza is an `Mn` and goes.
+        ("\u{0627}\u{0654}", "\u{0627}"),
+    ];
+
+    #[test]
+    fn strip_diacritics_matches_the_case_table() {
+        for &(input, expected) in DIACRITICS_CASES {
+            assert_eq!(strip_diacritics(input), expected, "input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn strip_diacritics_removes_exactly_the_nonspacing_marks_and_nothing_else() {
+        for code in 0x0600u32..=0x06FF {
+            let Some(c) = char::from_u32(code) else {
+                continue;
+            };
+            let input = c.to_string();
+            assert_eq!(
+                strip_diacritics(&input).is_empty(),
+                is_arabic_nonspacing_mark(c),
+                "U+{code:04X} must be removed only when it is a nonspacing mark"
+            );
+        }
+        // Outside the block, `Mn` marks are kept (upstream restricts the rule to the Arabic block).
+        for kept in [
+            "\u{0300}", "\u{0301}", "\u{06E5}", "\u{06E6}", "\u{06DD}", "\u{06E9}",
+        ] {
+            assert_eq!(strip_diacritics(kept), kept, "{kept:?} must be kept");
+        }
+    }
+
+    #[test]
+    fn strip_diacritics_supersets_strip_tashkeel() {
+        // Every tashkeel mark is an `Mn`, so removing diacritics subsumes removing tashkeel.
+        for &(input, _) in CASES
+            .iter()
+            .chain(HARAKAT_CASES)
+            .chain(SHADDA_CASES)
+            .chain(SMALL_CASES)
+        {
+            let once = strip_diacritics(input).into_owned();
+            assert_eq!(
+                strip_diacritics(&once).into_owned(),
+                once,
+                "idempotent: {input:?}"
+            );
+            assert_eq!(
+                strip_diacritics(&strip_tashkeel(input)).into_owned(),
+                once,
+                "strip_diacritics subsumes strip_tashkeel: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_diacritics_commutes_with_strip_small() {
+        // They overlap only on `U+0670`, so the two transforms commute.
+        for &(input, _) in DIACRITICS_CASES.iter().chain(SMALL_CASES) {
+            assert_eq!(
+                strip_small(&strip_diacritics(input)),
+                strip_diacritics(&strip_small(input)),
+                "counterexample: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_diacritics_borrows_input_without_a_mark() {
+        for clean in [
+            "",
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}",
+            "\u{0640}",
+            "\u{FEFB}",
+            "\u{1F389}",
+        ] {
+            assert!(
+                matches!(strip_diacritics(clean), Cow::Borrowed(_)),
+                "nothing to remove in {clean:?}"
+            );
+        }
+        assert!(
+            matches!(strip_diacritics("\u{0628}\u{064E}"), Cow::Owned(_)),
+            "a ḥaraka forces an allocation"
+        );
+    }
+
+    #[test]
+    fn strip_diacritics_removes_only_the_marks_own_bytes() {
+        let input = "\u{0628}\u{064E}\u{1F389}\u{0652}";
+        let output = strip_diacritics(input);
+
+        assert_eq!(output, "\u{0628}\u{1F389}");
+        assert_eq!(
+            input.len() - output.len(),
+            4,
+            "two two-byte marks were removed"
+        );
+        assert!(
+            input.is_char_boundary(input.len()),
+            "no code point is split"
+        );
+    }
+
+    #[test]
+    fn strip_diacritics_matches_the_word_spelled_out_in_the_documentation() {
+        // Pins the escape spelling of the doc example (الرَّحْمَٰن → الرحمن).
+        let vocalized = "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0670}\u{0646}";
+        assert_eq!(
+            strip_diacritics(vocalized),
+            "\u{0627}\u{0644}\u{0631}\u{062D}\u{0645}\u{0646}"
+        );
+    }
+
+    #[test]
+    fn strip_diacritics_into_clears_the_buffer_and_matches_the_case_table() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, expected) in DIACRITICS_CASES {
+            strip_diacritics_into(input, &mut buffer);
+            assert_eq!(buffer, expected, "input: {input:?}");
+        }
+
+        strip_diacritics_into("\u{0628}\u{064E}\u{062A}", &mut buffer);
+        assert_eq!(buffer, "\u{0628}\u{062A}");
+        strip_diacritics_into("", &mut buffer);
+        assert_eq!(buffer, "");
+
+        // The buffer is returned, so calls can be chained.
+        strip_diacritics_into("\u{0628}\u{064E}", &mut buffer).push('!');
         assert_eq!(buffer, "\u{0628}!");
     }
 }
