@@ -10,7 +10,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-use r_abic::normalize::{strip_harakat, strip_tashkeel};
+use r_abic::normalize::{strip_harakat, strip_lastharaka, strip_tashkeel};
 
 /// A fully vocalized sentence: the realistic worst case, where nearly every letter carries a mark.
 const VOCALIZED: &str = "الْعَرَبِيَّةُ لُغَةٌ جَمِيلَةٌ وَاسِعَةُ الِانْتِشَارِ";
@@ -69,5 +69,14 @@ fn bench_strip_harakat(c: &mut Criterion) {
     sweep(c, "strip_harakat", strip_harakat);
 }
 
-criterion_group!(benches, bench_strip_tashkeel, bench_strip_harakat);
+fn bench_strip_lastharaka(c: &mut Criterion) {
+    sweep(c, "strip_lastharaka", strip_lastharaka);
+}
+
+criterion_group!(
+    benches,
+    bench_strip_tashkeel,
+    bench_strip_harakat,
+    bench_strip_lastharaka
+);
 criterion_main!(benches);

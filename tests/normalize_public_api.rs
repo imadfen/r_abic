@@ -6,7 +6,10 @@
 
 use std::borrow::Cow;
 
-use r_abic::normalize::{strip_harakat, strip_harakat_into, strip_tashkeel, strip_tashkeel_into};
+use r_abic::normalize::{
+    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_tashkeel,
+    strip_tashkeel_into,
+};
 use r_abic::unicode::classify;
 
 /// الْعَرَبِيَّةُ — al-ʿarabiyya, spelled out as letters + marks.
@@ -131,6 +134,58 @@ fn strip_harakat_into_can_reuse_one_buffer_across_a_document() {
         ("\u{0645}\u{064F}\u{0651}", "\u{0645}\u{0651}"),
     ] {
         strip_harakat_into(word, &mut buffer);
+
+        assert_eq!(buffer, expected, "word: {word:?}");
+    }
+}
+
+#[test]
+fn strip_lastharaka_takes_only_the_final_haraka_and_every_tanwin() {
+    // الْعَرَبِيَّةُ → الْعَرَبِيَّة: the trailing damma goes, the internal marks and the shadda stay.
+    let vocalized = "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}\u{064F}";
+    let expected_partial = "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}";
+
+    assert_eq!(strip_lastharaka(vocalized), expected_partial);
+    assert_eq!(strip_lastharaka(expected_partial), expected_partial);
+
+    // The three siblings differ by exactly what they remove.
+    assert_eq!(strip_tashkeel(vocalized), PLAIN_WORD);
+    assert_eq!(
+        strip_harakat(vocalized),
+        "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0651}\u{0629}"
+    );
+}
+
+#[test]
+fn strip_lastharaka_mirrors_the_trailing_newline_behaviour() {
+    // Python's `$` also matches just before a single trailing newline, and the upstream pattern
+    // relies on it, so we mirror that: the ḥaraka is removed even though it is not the last char.
+    assert_eq!(
+        strip_lastharaka("\u{0628}\u{064E}\n"),
+        "\u{0628}\n",
+        "mirrored upstream behaviour"
+    );
+    // `\r\n` and a second newline block the anchor, so nothing changes there.
+    assert_eq!(
+        strip_lastharaka("\u{0628}\u{064E}\r\n"),
+        "\u{0628}\u{064E}\r\n"
+    );
+    assert_eq!(
+        strip_lastharaka("\u{0628}\u{064E}\n\n"),
+        "\u{0628}\u{064E}\n\n"
+    );
+}
+
+#[test]
+fn strip_lastharaka_into_can_reuse_one_buffer() {
+    let mut buffer = String::new();
+
+    for (word, expected) in [
+        ("\u{0628}\u{064E}", "\u{0628}"),
+        ("\u{0628}\u{064B}\u{062A}", "\u{0628}\u{062A}"),
+        ("\u{0628}\u{0651}", "\u{0628}\u{0651}"),
+    ] {
+        strip_lastharaka_into(word, &mut buffer);
 
         assert_eq!(buffer, expected, "word: {word:?}");
     }

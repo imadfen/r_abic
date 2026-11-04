@@ -9,7 +9,7 @@
 > `.github/copilot-instructions.md` (Copilot). If a binding disagrees with **this** file, this file wins
 > and the binding must be fixed in the same change.
 >
-> Last reviewed: **2026-11-03** · Ruleset version **v1.4.2** · Toolchain in use: `rustc`/`cargo`
+> Last reviewed: **2026-11-04** · Ruleset version **v1.4.3** · Toolchain in use: `rustc`/`cargo`
 > 1.98.0, `clippy` 0.1.98, `rustfmt` 1.9.0-stable · Edition **2024** · Status: **Phase 1 in progress**
 > (`error`, `unicode` and `normalize::strip_tashkeel` landed) · **Releases are automated** from Conventional Commits via release-plz
 > (§8) — versions, tags and `CHANGELOG.md` are never written by hand.
@@ -624,7 +624,10 @@ Mandatory properties (where applicable to the module under test):
    `text.is_char_boundary(start)` / `(…end)`.
 2. **Totality** — a few thousand generated inputs drive every public function without a panic.
 3. **Idempotence** — `f(f(x)) == f(x)` for `strip_*`, `normalize_*`, `to_base_letters`,
-   `reduce_tashkeel`.
+   `reduce_tashkeel`. One documented exception: `strip_lastharaka` mirrors upstream
+   `[HARAKAT]$|[TANWIN]` and therefore removes at most one trailing ḥaraka per call, so the property
+   suite records `idempotent: false` for it in its per-transform table rather than silently skipping
+   the check (`tests/properties.rs`).
 4. **No character creation/destruction** — `strip_*` never adds characters; `strip_harakat` keeps
    shadda while `strip_tashkeel` removes it; `normalize_ligature(x).chars().count() >= x.chars().count()`.
 5. **Round-trips** — `decode_tashkeel(x, encode_tashkeel(x).1) == x`; `joint(separate(w)) == w`; digit
@@ -1599,6 +1602,7 @@ Reminder: `cargo test --doc` is not implied by a plain `cargo test --lib`, and c
 
 | Version | Date | Change |
 |---|---|---|
+| **1.4.3** | 2026-11-04 | PATCH: §4.5's idempotence property now names its one exception — `strip_lastharaka` mirrors upstream `[HARAKAT]$|[TANWIN]` and removes at most one trailing ḥaraka per call, so the property suite records that per transform instead of skipping the check. No other rule, gate or test requirement changed. |
 | **1.4.2** | 2026-11-03 | PATCH: reconciled §3.2 and Appendix B.1/B.2 with a one-time `tools/oracle/` checkout — corrected the `is_*` predicate list and the `normalize` symbol list, closed every `(verify)` marker in B.1, recorded the verified `strip_*`/`reduce_tashkeel`/`normalize_hamza` semantics, and removed the phantom symbols (`reduce_tatweel`, `is_letter`, `is_arabicletter`, `is_vowel`, `is_hamza_above`/`is_hamza_below`) that upstream `master` does not define. No rule, gate or test requirement changed; `docs/PARITY.md` §1–§2 and `docs/DIVERGENCES.md` (D-002 wording, D-003 withdrawn, D-006/D-007 added) carry the detail. |
 | **1.4.1** | 2026-11-03 | PATCH: corrected upstream facts that Phase 0 had left marked `(verify)`, after a one-time local `tools/oracle/` checkout of the GPL upstream. `normalize_hamza` really is `normalize_hamza(word, method="uniform")` with the methods `uniform`/`tasheel` — not `HamzaMethod { Remove, Tasheel }` — so §3.3's enum example, the Appendix B checklist item and the **tasheel** glossary entry were corrected; the header status line moved to Phase 1. No rule, gate or test requirement changed. |
 | **1.4.0** | 2026-11-01 | MINOR: **§5.7 "Git operations require a human green light"** — no history- or remote-changing git command runs until the user has approved a proposal containing the exact commands, paths, verbatim commit message, expected state and destructive effects; read-only commands are allowlisted, `fetch`/`add` are announce-only, and "ok"/"thanks" are explicitly not approval. Added red line 20, a Definition of Done item, one bullet in each vendor binding and a note in `CONTRIBUTING.md`. |
@@ -1618,6 +1622,6 @@ a new gate, or a new mandatory test category; `PATCH` = wording, typos, clarifie
 
 ---
 
-*End of `AGENTS.md` v1.4.2 — if you are an agent reading this at the start of a task, re-read §0.2, the
+*End of `AGENTS.md` v1.4.3 — if you are an agent reading this at the start of a task, re-read §0.2, the
 plan template in §5.1, the edge-case matrix in §4.3 and the gate in §4.8 before you write a single line
 of code or a single test.*

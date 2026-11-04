@@ -1,6 +1,6 @@
 # Copilot / AI assistant instructions for `r_abic`
 
-> **Canonical ruleset:** [`AGENTS.md`](../AGENTS.md) (v1.4.2, agent-neutral) at the repository root. Read it
+> **Canonical ruleset:** [`AGENTS.md`](../AGENTS.md) (v1.4.3, agent-neutral) at the repository root. Read it
 > fully before suggesting or writing code. This file is a Copilot binding that repeats only the rules that
 > must never be violated; if there is any conflict, `AGENTS.md` is authoritative.
 
