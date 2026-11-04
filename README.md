@@ -4,14 +4,14 @@ Arabic text processing library for Rust, inspired by
 [PyArabic](https://github.com/linuxscout/pyarabic).
 
 > Status: **Phase 1** (in progress) — the `unicode` module (code points, class tables, classification
-> predicates) and the first members of the `normalize` strip family (`strip_tashkeel`, `strip_harakat`)
-> are implemented. The remaining transforms, tokenization, unshaping, transliteration and numbers
-> follow; see [`AGENTS.md`](AGENTS.md) §6.
+> predicates) and the first members of the `normalize` strip family (`strip_tashkeel`, `strip_harakat`,
+> `strip_lastharaka`) are implemented. The remaining transforms, tokenization, unshaping,
+> transliteration and numbers follow; see [`AGENTS.md`](AGENTS.md) §6.
 
 ## Quick start
 
 ```rust
-use r_abic::normalize::{strip_harakat, strip_tashkeel};
+use r_abic::normalize::{strip_harakat, strip_lastharaka, strip_tashkeel};
 use r_abic::unicode::{classify, constants, tables};
 
 // Code points are exposed under their PyArabic names.
@@ -33,6 +33,9 @@ assert!(matches!(
 
 // `strip_harakat` is the same, except that the shadda survives.
 assert_eq!(strip_harakat("الْعَرَبِيَّةُ"), "العربيّة");
+
+// `strip_lastharaka` removes every tanwīn plus only the last ḥaraka:
+assert_eq!(strip_lastharaka("الْعَرَبِيَّةُ"), "الْعَرَبِيَّة");
 ```
 
 ## Build

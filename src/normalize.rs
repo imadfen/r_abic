@@ -19,7 +19,7 @@
 
 use std::borrow::Cow;
 
-use crate::unicode::classify::{is_haraka, is_tashkeel};
+use crate::unicode::classify::{is_haraka, is_tanwin, is_tashkeel};
 
 /// Removes every ḥaraka and shadda (`TASHKEEL`) from `text`, leaving all other characters alone.
 ///
@@ -66,7 +66,7 @@ use crate::unicode::classify::{is_haraka, is_tashkeel};
 /// to its `araby` counterpart.
 #[must_use]
 pub fn strip_tashkeel(text: &str) -> Cow<'_, str> {
-    strip_by(text, is_tashkeel)
+    strip_by(text, |_, ch| is_tashkeel(ch))
 }
 
 /// Removes every ḥaraka and shadda from `text` and writes the result into `out`.
@@ -105,17 +105,19 @@ pub fn strip_tashkeel(text: &str) -> Cow<'_, str> {
 /// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
 /// mark is actually found, so repeated calls with clean input reuse the existing capacity.
 pub fn strip_tashkeel_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
-    strip_by_into(text, out, is_tashkeel)
+    strip_by_into(text, out, |_, ch| is_tashkeel(ch))
 }
 
 /// Removes every character `is_stripped` accepts, borrowing `text` when there is nothing to remove.
 ///
 /// This is the single implementation behind the `strip_*` family (`AGENTS.md` §3.5): scan for the
 /// first character that must go, copy the clean prefix with one `push_str`, then filter the rest.
-/// The predicate is a generic parameter, not a `fn` pointer, so each caller gets its own inlined copy.
+/// The predicate receives each character's byte offset in `text`, so a transform may depend on the
+/// position (as `strip_lastharaka` does); it is a generic parameter rather than a `fn` pointer, so
+/// each caller keeps its own inlined copy of the loop.
 fn strip_by<F>(text: &str, is_stripped: F) -> Cow<'_, str>
 where
-    F: Fn(char) -> bool,
+    F: Fn(usize, char) -> bool,
 {
     let Some(first) = first_stripped(text, &is_stripped) else {
         return Cow::Borrowed(text);
@@ -126,7 +128,7 @@ where
 
     let mut out = String::with_capacity(text.len());
     out.push_str(&text[..first]);
-    push_kept(&text[first..], &mut out, &is_stripped);
+    push_kept(&text[first..], first, &mut out, &is_stripped);
     Cow::Owned(out)
 }
 
@@ -136,7 +138,7 @@ where
 /// reuse the capacity the buffer already has (`AGENTS.md` §3.3, §3.6).
 fn strip_by_into<'a, F>(text: &str, out: &'a mut String, is_stripped: F) -> &'a mut String
 where
-    F: Fn(char) -> bool,
+    F: Fn(usize, char) -> bool,
 {
     out.clear();
 
@@ -148,7 +150,7 @@ where
 
             out.reserve(text.len());
             out.push_str(&text[..first]);
-            push_kept(&text[first..], out, &is_stripped);
+            push_kept(&text[first..], first, out, &is_stripped);
         }
     }
 
@@ -204,7 +206,7 @@ where
 /// check, which cannot change the outcome: a text without `HARAKAT` has nothing to remove.
 #[must_use]
 pub fn strip_harakat(text: &str) -> Cow<'_, str> {
-    strip_by(text, is_haraka)
+    strip_by(text, |_, ch| is_haraka(ch))
 }
 
 /// Removes every ḥaraka from `text` and writes the result into `out`, keeping shadda.
@@ -243,7 +245,114 @@ pub fn strip_harakat(text: &str) -> Cow<'_, str> {
 /// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
 /// ḥaraka is actually found, so repeated calls with clean input reuse the existing capacity.
 pub fn strip_harakat_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
-    strip_by_into(text, out, is_haraka)
+    strip_by_into(text, out, |_, ch| is_haraka(ch))
+}
+
+/// Removes every tanwīn mark and, at most, one trailing ḥaraka from `text`, keeping shadda.
+///
+/// Mirrors `PyArabic` `araby.strip_lastharaka` — note the upstream spelling (`..._haraka`, not
+/// `..._harakat`). Despite the name, the upstream pattern is `[HARAKAT]$|[TANWIN]`: **every** tanwīn
+/// mark is removed wherever it appears, while only **one** ḥaraka is removed, and only from the end.
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+/// use r_abic::normalize::strip_lastharaka;
+///
+/// // The trailing ḥaraka goes, the internal ones stay:
+/// assert_eq!(strip_lastharaka("الْعَرَبِيَّةُ"), "الْعَرَبِيَّة");
+/// assert_eq!(strip_lastharaka("مُحَمَّدٌ"), "مُحَمَّد");
+///
+/// // Nothing tanwīn and no trailing ḥaraka: the input is borrowed, not copied:
+/// assert!(matches!(strip_lastharaka("كتاب"), Cow::Borrowed(_)));
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()` (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// Exactly two things are removed: every `TANWIN` mark (`U+064B`–`U+064D`) anywhere, and a `HARAKAT`
+/// mark (`U+064E`–`U+0650`, `U+0652`) **only** in the final position.
+///
+/// "Final position" follows Python's `$` anchor, which upstream's pattern relies on: the end of
+/// `text`, or the character just before a **single trailing `\n`**. That second case is upstream
+/// behaviour mirrored on purpose (the pattern *is* the parity target), so `strip_lastharaka("بَ\n")`
+/// is `"ب\n"` even though the ḥaraka is not the last character; a `\r\n` ending does **not** trigger
+/// it, because the `\r` sits between the ḥaraka and the final newline. Both cases are pinned by tests.
+///
+/// Unlike [`strip_harakat`], this is **not idempotent**: at most one ḥaraka is removed per call, so
+/// `بََ` needs two calls to lose both marks (upstream behaves identically). Shadda, tatweel,
+/// superscript alef, small waw/yeh, madda and the combining hamzas, presentation forms, digits,
+/// punctuation and everything outside Arabic are untouched, and no normalization form is applied.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when nothing matches; otherwise allocates one
+/// `String` with the capacity of the input, copies the prefix before the first match with a single
+/// `push_str`, and filters the remainder.
+///
+/// # Parity
+///
+/// Same result as upstream for every input, including the trailing-newline case. Upstream also guards
+/// the work with its `is_vocalized` check, which cannot change the outcome.
+#[must_use]
+#[doc(alias = "strip_last_haraka")]
+pub fn strip_lastharaka(text: &str) -> Cow<'_, str> {
+    strip_by(text, |index, ch| is_stripped_by_lastharaka(text, index, ch))
+}
+
+/// Removes every tanwīn mark and, at most, one trailing ḥaraka from `text`, writing into `out`.
+///
+/// Mirrors `PyArabic` `araby.strip_lastharaka`, but reuses a caller-owned buffer instead of returning
+/// a new string (`AGENTS.md` §3.3, §3.6). `out` is **cleared first** and returned so calls can chain.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::strip_lastharaka_into;
+///
+/// let mut buffer = String::from("stale content");
+/// strip_lastharaka_into("الْعَرَبِيَّةُ", &mut buffer);
+/// assert_eq!(buffer, "الْعَرَبِيَّة");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The removed and kept code points are exactly those documented on [`strip_lastharaka`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
+/// match is found, so repeated calls with clean input reuse the existing capacity.
+pub fn strip_lastharaka_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    strip_by_into(text, out, |index, ch| {
+        is_stripped_by_lastharaka(text, index, ch)
+    })
+}
+
+/// `true` when upstream's `[HARAKAT]$|[TANWIN]` pattern matches the character at `index`: every
+/// tanwīn mark, plus any ḥaraka that sits where Python's `$` anchor matches ([`at_pattern_end`]).
+fn is_stripped_by_lastharaka(text: &str, index: usize, ch: char) -> bool {
+    is_haraka(ch) && (is_tanwin(ch) || at_pattern_end(text, index, ch.len_utf8()))
+}
+
+/// `true` when the character at byte offset `index` sits where Python's `$` anchor matches: at the
+/// very end of `text`, or immediately before a single trailing `\n`.
+///
+/// Upstream's `strip_lastharaka` relies on `re`'s `$`, which also matches just before a final
+/// newline; `\r\n` and a second newline do not. Mirroring that exactly is deliberate — the pattern is
+/// the parity target — and both cases are pinned by tests in this module.
+fn at_pattern_end(text: &str, index: usize, width: usize) -> bool {
+    let after = index + width;
+
+    after == text.len() || (after + 1 == text.len() && text.ends_with('\n'))
 }
 
 /// Returns the byte offset of the first character in `text` that `is_stripped` accepts, if any.
@@ -252,24 +361,34 @@ pub fn strip_harakat_into<'a>(text: &str, out: &'a mut String) -> &'a mut String
 /// slicing without further checks (`AGENTS.md` §3.5).
 fn first_stripped<F>(text: &str, is_stripped: &F) -> Option<usize>
 where
-    F: Fn(char) -> bool,
+    F: Fn(usize, char) -> bool,
 {
     text.char_indices()
-        .find_map(|(index, ch)| is_stripped(ch).then_some(index))
+        .find_map(|(index, ch)| is_stripped(index, ch).then_some(index))
 }
 
 /// Appends every character of `text` that `is_stripped` rejects to `out`.
-fn push_kept<F>(text: &str, out: &mut String, is_stripped: &F)
+///
+/// `base` is the byte offset of `text` inside the string being processed, so the predicate always
+/// sees offsets relative to the whole input rather than to the slice it is filtering.
+fn push_kept<F>(text: &str, base: usize, out: &mut String, is_stripped: &F)
 where
-    F: Fn(char) -> bool,
+    F: Fn(usize, char) -> bool,
 {
-    out.extend(text.chars().filter(|ch| !is_stripped(*ch)));
+    out.extend(
+        text.char_indices()
+            .filter(|&(index, ch)| !is_stripped(base + index, ch))
+            .map(|(_, ch)| ch),
+    );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{strip_harakat, strip_harakat_into, strip_tashkeel, strip_tashkeel_into};
-    use crate::unicode::classify::{is_haraka, is_shadda, is_tashkeel};
+    use super::{
+        strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_tashkeel,
+        strip_tashkeel_into,
+    };
+    use crate::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel};
     use crate::unicode::{constants, tables};
     use std::borrow::Cow;
 
@@ -466,6 +585,90 @@ mod tests {
         ),
     ];
 
+    /// `(input, expected)` pairs for `strip_lastharaka`, in the same escape convention as `CASES`.
+    ///
+    /// Upstream's pattern is `[HARAKAT]$|[TANWIN]`, so every row answers two questions: does it hold
+    /// tanwīn (removed anywhere), and does it end in a ḥaraka (removed, once)? Rows that show the
+    /// differences from the sibling functions carry comments; those marked "probe" were reproduced
+    /// with plain Python `re` and the same pattern.
+    const LASTHARAKA_CASES: &[(&str, &str)] = &[
+        // E1 — empty input; E2 — whitespace only.
+        ("", ""),
+        ("   \t\n", "   \t\n"),
+        // E3 — the fatha is *not* trailing once the shadda follows it, so nothing is removed here ...
+        ("\u{064E}\u{0651}", "\u{064E}\u{0651}"),
+        // ... whereas a ḥaraka in the true final position does go, shadda or not (probe).
+        ("\u{0651}\u{064E}", "\u{0651}"),
+        // E3 — tanwīn only.
+        ("\u{064B}\u{064C}\u{064D}", ""),
+        // E4 — a *leading* ḥaraka is not trailing, so it survives (contrast with `strip_harakat`).
+        ("\u{064E}\u{0628}", "\u{064E}\u{0628}"),
+        ("\u{064E}\u{0628}\u{064E}", "\u{064E}\u{0628}"),
+        // The single-pass trap (probe): the fatha is not at the end of the *input*, so a two-pass
+        // "remove tanwīn, then look for a trailing ḥaraka" implementation would wrongly drop it.
+        ("\u{0628}\u{064E}\u{064C}", "\u{0628}\u{064E}"),
+        // ... in the reverse mark order both marks go (probe).
+        ("\u{0628}\u{064C}\u{064E}", "\u{0628}"),
+        // Mid-text tanwīn goes even when nothing is trailing (probe).
+        ("\u{0628}\u{064B}\u{062A}", "\u{0628}\u{062A}"),
+        ("\u{0628}\u{064B}\u{062A}\u{064E}", "\u{0628}\u{062A}"),
+        // A trailing shadda is not a ḥaraka (probe).
+        ("\u{0628}\u{0651}", "\u{0628}\u{0651}"),
+        // E5 — internal ḥarakāt stay: only the trailing damma goes (upstream's own example word).
+        (
+            "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}\u{064F}",
+            "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}",
+        ),
+        // The shadda/ḥaraka order does not change the outcome, and nothing is trailing here.
+        (
+            "\u{0627}\u{0644}\u{0634}\u{0651}\u{064E}\u{0645}\u{0633}",
+            "\u{0627}\u{0644}\u{0634}\u{0651}\u{064E}\u{0645}\u{0633}",
+        ),
+        // E6 — tatweel is a joiner; E7 — mixed script; E8 — digits of three sets.
+        (
+            "\u{0628}\u{0640}\u{0640}\u{0645}",
+            "\u{0628}\u{0640}\u{0640}\u{0645}",
+        ),
+        (
+            "\u{0639}\u{064E}\u{0631}\u{0628} Book 12 \u{0661}\u{06F1}",
+            "\u{0639}\u{064E}\u{0631}\u{0628} Book 12 \u{0661}\u{06F1}",
+        ),
+        // E9 — punctuation; E10 — astral characters.
+        (
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+        ),
+        // E11–E13 — joiners, directional marks and BOM; the trailing sukūn still goes.
+        (
+            "\u{0628}\u{200D}\u{062A}\u{0652}",
+            "\u{0628}\u{200D}\u{062A}",
+        ),
+        (
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        (
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+            "\u{FEFF}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ),
+        // E15/E16 — a ligature is not a mark and a trailing shadda on it stays.
+        ("\u{FEFB}\u{0651}", "\u{FEFB}\u{0651}"),
+        // E17 — Python's `$` also matches just before a *single* trailing newline (probe), which we
+        // mirror on purpose; `\r\n` and a second newline block the anchor (probe).
+        ("\u{0628}\u{064E}\n", "\u{0628}\n"),
+        ("\u{0628}\u{064E}\r\n", "\u{0628}\u{064E}\r\n"),
+        ("\u{0628}\u{064E}\n\n", "\u{0628}\u{064E}\n\n"),
+        // E19 — one ḥaraka per call: the reason this function is not idempotent.
+        ("\u{0628}\u{064E}\u{064E}", "\u{0628}\u{064E}"),
+        // E20 — no normalization; the non-ḥaraka combining marks survive.
+        ("\u{0627}\u{0654}", "\u{0627}\u{0654}"),
+        ("\u{06E5}\u{0652}\u{06E6}", "\u{06E5}\u{0652}\u{06E6}"),
+        (
+            "\u{0653}\u{0654}\u{0655}\u{064F}",
+            "\u{0653}\u{0654}\u{0655}",
+        ),
+    ];
+
     #[test]
     fn clean_input_is_borrowed_and_marked_input_is_owned() {
         for clean in [
@@ -622,6 +825,117 @@ mod tests {
 
         strip_tashkeel_into("cleaner text", &mut buffer);
         assert_eq!(buffer, "cleaner text");
+    }
+
+    #[test]
+    fn strip_lastharaka_matches_the_case_table() {
+        for &(input, expected) in LASTHARAKA_CASES {
+            assert_eq!(strip_lastharaka(input), expected, "input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn strip_lastharaka_removes_every_tanwin_and_only_a_trailing_haraka() {
+        for &mark in tables::TANWIN {
+            assert!(is_tanwin(mark), "TANWIN member {mark:?}");
+            assert!(
+                strip_lastharaka(&mark.to_string()).is_empty(),
+                "tanwīn {mark:?} must go wherever it is"
+            );
+
+            let embedded = format!("\u{0628}{mark}\u{062A}");
+            assert_eq!(
+                strip_lastharaka(&embedded),
+                "\u{0628}\u{062A}",
+                "mid-text {mark:?} must go"
+            );
+        }
+
+        for &mark in tables::SHORTHARAKAT {
+            assert!(
+                strip_lastharaka(&mark.to_string()).is_empty(),
+                "trailing {mark:?} must go"
+            );
+
+            let embedded = format!("\u{0628}{mark}\u{062A}");
+            assert_eq!(
+                strip_lastharaka(&embedded),
+                embedded,
+                "mid-text {mark:?} must survive"
+            );
+        }
+
+        for untouched in ["\u{0651}", "\u{0628}\u{0651}", "\u{0651}\u{0628}"] {
+            assert_eq!(
+                strip_lastharaka(untouched),
+                untouched,
+                "shadda is never touched: {untouched:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_lastharaka_needs_one_call_per_trailing_haraka() {
+        let double = "\u{0628}\u{064E}\u{064E}";
+        let once = strip_lastharaka(double);
+        let twice = strip_lastharaka(&once);
+        let thrice = strip_lastharaka(&twice);
+
+        assert_eq!(once, "\u{0628}\u{064E}");
+        assert_eq!(twice, "\u{0628}");
+        assert_eq!(thrice, "\u{0628}", "a third call changes nothing");
+        assert_ne!(once, twice, "the documented non-idempotence");
+    }
+
+    #[test]
+    fn strip_lastharaka_borrows_input_it_does_not_change() {
+        for clean in [
+            "",
+            "\u{0643}\u{062A}\u{0627}\u{0628}",
+            "\u{0628}\u{0651}",
+            "\u{064E}\u{0628}",
+            "\u{0628}\u{064E}\r\n",
+            "\u{0628}\u{0652}\u{062A}",
+        ] {
+            assert!(
+                matches!(strip_lastharaka(clean), Cow::Borrowed(_)),
+                "nothing to remove in {clean:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_lastharaka_into_clears_the_buffer_and_matches_the_case_table() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, expected) in LASTHARAKA_CASES {
+            strip_lastharaka_into(input, &mut buffer);
+            assert_eq!(buffer, expected, "input: {input:?}");
+        }
+
+        strip_lastharaka_into("\u{0628}\u{064E}", &mut buffer);
+        assert_eq!(buffer, "\u{0628}");
+        strip_lastharaka_into("", &mut buffer);
+        assert_eq!(buffer, "");
+
+        strip_lastharaka_into("\u{0628}\u{064B}", &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0628}!");
+    }
+
+    #[test]
+    fn strip_lastharaka_matches_the_words_spelled_out_in_the_documentation() {
+        // The doc examples spell these words in Arabic script; pinning them with escapes means a
+        // hand-typed mark can never silently change what the documentation promises.
+        let arabiyya = "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}\u{064F}";
+        let muhammad = "\u{0645}\u{064F}\u{062D}\u{064E}\u{0645}\u{0651}\u{064E}\u{062F}\u{064C}";
+
+        assert_eq!(
+            strip_lastharaka(arabiyya),
+            "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0631}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}"
+        );
+        assert_eq!(
+            strip_lastharaka(muhammad),
+            "\u{0645}\u{064F}\u{062D}\u{064E}\u{0645}\u{0651}\u{064E}\u{062F}"
+        );
     }
 
     #[test]

@@ -9,22 +9,31 @@ mod common;
 use std::borrow::Cow;
 
 use common::{ALPHABET, Rng};
-use r_abic::normalize::{strip_harakat, strip_harakat_into, strip_tashkeel, strip_tashkeel_into};
-use r_abic::unicode::classify::{is_haraka, is_shadda, is_tashkeel};
+use r_abic::normalize::{
+    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_tashkeel,
+    strip_tashkeel_into,
+};
+use r_abic::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel};
 
-/// One row of [`STRIPPERS`]: a name for the failure message, the transform, and the predicate that
-/// says which characters it removes.
+/// One row of [`STRIPPERS`]: a name for the failure message, the transform, the predicate that says
+/// which characters it removes (absent when the rule depends on position rather than on the character
+/// alone), and whether the contract says that calling it twice equals calling it once.
 type Stripper = (
     &'static str,
     for<'a> fn(&'a str) -> Cow<'a, str>,
-    fn(char) -> bool,
+    Option<fn(char) -> bool>,
+    bool,
 );
 
 /// Every member of the `normalize` strip family. The invariants below are written once and apply to
 /// all of them, so landing a new `strip_*` means adding one row here.
 const STRIPPERS: &[Stripper] = &[
-    ("strip_tashkeel", strip_tashkeel, is_tashkeel),
-    ("strip_harakat", strip_harakat, is_haraka),
+    ("strip_tashkeel", strip_tashkeel, Some(is_tashkeel), true),
+    ("strip_harakat", strip_harakat, Some(is_haraka), true),
+    // `strip_lastharaka` removes every tanwīn plus at most ONE trailing ḥaraka, so it has no
+    // character-wise predicate and is deliberately not idempotent: two trailing ḥarakāt need two
+    // calls (upstream's `[HARAKAT]$|[TANWIN]` behaves the same). Its own invariants are below.
+    ("strip_lastharaka", strip_lastharaka, None, false),
 ];
 
 /// Samples per property: enough to hit every class combination of the curated alphabet while keeping
@@ -50,7 +59,7 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
 
 #[test]
 fn stripping_is_total_and_only_deletes_characters() {
-    for &(name, strip, is_stripped) in STRIPPERS {
+    for &(name, strip, char_wise, _) in STRIPPERS {
         for input in samples() {
             let output = strip(&input);
 
@@ -58,26 +67,33 @@ fn stripping_is_total_and_only_deletes_characters() {
                 output.len() <= input.len(),
                 "{name}: counterexample {input:?} grew to {output:?}"
             );
-            assert_eq!(
-                output.chars().count(),
-                input.chars().filter(|c| !is_stripped(*c)).count(),
-                "{name}: counterexample {input:?} -> {output:?}"
-            );
             assert!(
                 is_subsequence(&output, &input),
                 "{name}: counterexample {input:?} -> {output:?} is not a deletion"
             );
-            assert!(
-                output.chars().all(|c| !is_stripped(c)),
-                "{name}: counterexample {input:?} -> {output:?} kept a removed character"
-            );
+
+            if let Some(is_stripped) = char_wise {
+                assert_eq!(
+                    output.chars().count(),
+                    input.chars().filter(|c| !is_stripped(*c)).count(),
+                    "{name}: counterexample {input:?} -> {output:?}"
+                );
+                assert!(
+                    output.chars().all(|c| !is_stripped(c)),
+                    "{name}: counterexample {input:?} -> {output:?} kept a removed character"
+                );
+            }
         }
     }
 }
 
 #[test]
-fn stripping_is_idempotent() {
-    for &(name, strip, _) in STRIPPERS {
+fn stripping_is_idempotent_where_the_contract_says_so() {
+    for &(name, strip, _, idempotent) in STRIPPERS {
+        if !idempotent {
+            continue;
+        }
+
         for input in samples() {
             let once = strip(&input).into_owned();
             let twice = strip(&once);
@@ -93,7 +109,14 @@ fn stripping_is_idempotent() {
 
 #[test]
 fn stripping_borrows_input_that_is_already_clean() {
-    for &(name, strip, _) in STRIPPERS {
+    for &(name, strip, _, idempotent) in STRIPPERS {
+        // For a non-idempotent member (only `strip_lastharaka` today) one call is not enough to reach
+        // the fixed point, so its own output may still have something to remove; its borrowed path is
+        // covered by the test below instead.
+        if !idempotent {
+            continue;
+        }
+
         for input in samples() {
             let clean = strip(&input).into_owned();
 
@@ -102,6 +125,50 @@ fn stripping_borrows_input_that_is_already_clean() {
                 "{name}: counterexample {clean:?}"
             );
         }
+    }
+}
+
+#[test]
+fn strip_lastharaka_borrows_input_with_nothing_to_remove() {
+    for input in samples() {
+        // Drop every tanwīn and force a non-ḥaraka last character: nothing can match the pattern, so
+        // the call must take the zero-copy path.
+        let clean: String = input
+            .chars()
+            .filter(|c| !is_tanwin(*c))
+            .chain(std::iter::once('\u{0643}'))
+            .collect();
+
+        assert!(
+            matches!(strip_lastharaka(&clean), Cow::Borrowed(_)),
+            "counterexample: {clean:?}"
+        );
+    }
+}
+
+#[test]
+fn strip_lastharaka_removes_every_tanwin_and_at_most_one_haraka() {
+    for input in samples() {
+        let output = strip_lastharaka(&input).into_owned();
+
+        assert!(
+            !output.chars().any(is_tanwin),
+            "every tanwīn must go: {input:?}"
+        );
+        assert_eq!(
+            output.chars().filter(|c| is_shadda(*c)).count(),
+            input.chars().filter(|c| is_shadda(*c)).count(),
+            "shadda is never touched: {input:?}"
+        );
+
+        let removed_harakat = input.chars().filter(|c| is_haraka(*c)).count()
+            - output.chars().filter(|c| is_haraka(*c)).count();
+        let removed_tanwin = input.chars().filter(|c| is_tanwin(*c)).count();
+
+        assert!(
+            removed_harakat <= removed_tanwin + 1,
+            "at most one non-tanwīn ḥaraka is removed per call: {input:?}"
+        );
     }
 }
 
@@ -122,6 +189,13 @@ fn into_variants_agree_with_the_cow_variants() {
             buffer,
             strip_harakat(&input),
             "strip_harakat_into: {input:?}"
+        );
+
+        strip_lastharaka_into(&input, &mut buffer);
+        assert_eq!(
+            buffer,
+            strip_lastharaka(&input),
+            "strip_lastharaka_into: {input:?}"
         );
     }
 }

@@ -82,7 +82,7 @@ Everything below was re-verified on 2026-11-03 against a local `tools/oracle/` c
 |---|---|---|---|
 | `strip_tashkeel(text)` | `normalize::strip_tashkeel` (+ `strip_tashkeel_into`) | done | `Cow` fast path + `_into` buffer reuse; pinned by 10 unit + 4 property + 8 integration tests + 3 doctests; bench `benches/normalize.rs` |
 | `strip_harakat(text)` | `normalize::strip_harakat` (+ `strip_harakat_into`) | done | verified: removes the 7 `HARAKAT` marks and **keeps shadda** — upstream's `is_vocalized` guard cannot change the result; pinned by 9 unit + 3 integration + 5 property tests and 2 doctests; bench `benches/normalize.rs` |
-| `strip_lastharaka(text)` | `normalize::strip_lastharaka` | todo | verified: removes **every `TANWIN` mark plus one trailing `HARAKAT`** (`[HARAKAT]$|[TANWIN]`), guarded by `is_vocalized`; upstream spelling kept, `#[doc(alias = "strip_last_haraka")]` |
+| `strip_lastharaka(text)` | `normalize::strip_lastharaka` (+ `strip_lastharaka_into`) | done | verified: removes every `TANWIN` mark anywhere plus **one** trailing `HARAKAT` (`[HARAKAT]$|[TANWIN]`), so it is deliberately **not idempotent**; the `$` anchor is mirrored exactly, including its match just before a single trailing `\n`; pinned by 6 unit + 3 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
 | `strip_tatweel(text)` | `normalize::strip_tatweel` | todo | verified: plain removal of `U+0640` |
 | `strip_shadda(text)` | `normalize::strip_shadda` | todo | verified: plain removal of `U+0651` (no `is_vocalized` guard) |
 | `strip_small(text)` | `normalize::strip_small` | todo | **new row**: removes the `SMALL` class — `U+0670`, `U+06E5`, `U+06E6` |
