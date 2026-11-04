@@ -7,7 +7,7 @@ Living tracker for behavioural parity with PyArabic
 `TBD` in a note means "upstream semantics not verified yet" — such a symbol must never be marked
 `done`.
 
-**Last updated:** 2026-11-04 (Phase 1 continuing: the `normalize` strip family — `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`).
+**Last updated:** 2026-11-04 (Phase 1 continuing: the `normalize` strip family — `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`, `strip_small`).
 
 ---
 
@@ -55,7 +55,8 @@ Everything below was re-verified on 2026-11-03 against a local `tools/oracle/` c
 | `is_vocalized` | `unicode::classify::is_vocalized` | done | **verified equivalent**: upstream's lone-shadda word does count (its `is_tashkeel` includes shadda), so the former D-003 divergence was withdrawn |
 | `is_vocalizedtext` | `unicode::classify::has_harakat` | done | verified: upstream searches `HARAKAT` only — a lone shadda does **not** count |
 | `is_arabicstring` | — | todo | verified: rejects any char outside `U+0600–U+0652` ∪ the 3 lam-alef forms ∪ whitespace ∪ Unicode decimal digits; vacuous `true` for empty input |
-| `is_alef`, `is_yehlike`, `is_wawlike`, `is_teh`, `is_small`, `is_weak`, `is_moon`, `is_sun` | — | todo | pure table membership; the `unicode::tables` groups themselves are `done` |
+| `is_small` | `unicode::classify::is_small` | done | membership in `SMALL` (`U+0670`, `U+06E5`, `U+06E6`); pinned by a block-scan test against `tables::SMALL` + doctest |
+| `is_alef`, `is_yehlike`, `is_wawlike`, `is_teh`, `is_weak`, `is_moon`, `is_sun` | — | todo | pure table membership; the `unicode::tables` groups themselves are `done` |
 | `first_char`, `second_char`, `last_char`, `secondlast_char` | — | todo | trivial accessors; decide during Phase 1 whether to expose them |
 | `order`, `name` | `unicode::tables::alphabetic_order`, `unicode::names` (Phase 3) | done / todo | `ALPHABETIC_ORDER` / `NAMES` lookups |
 | `arabicrange()` (a string of the whole block) | — | out-of-scope | exists only to build regexes; predicates replace it (D-001) |
@@ -85,7 +86,7 @@ Everything below was re-verified on 2026-11-03 against a local `tools/oracle/` c
 | `strip_lastharaka(text)` | `normalize::strip_lastharaka` (+ `strip_lastharaka_into`) | done | verified: removes every `TANWIN` mark anywhere plus **one** trailing `HARAKAT` (`[HARAKAT]$|[TANWIN]`), so it is deliberately **not idempotent**; the `$` anchor is mirrored exactly, including its match just before a single trailing `\n`; pinned by 6 unit + 3 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
 | `strip_tatweel(text)` | `normalize::strip_tatweel` (+ `strip_tatweel_into`) | done | verified: plain removal of `U+0640` (the `NOT_DEF_HARAKA` alias is the same code point); pinned by 7 unit + 3 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
 | `strip_shadda(text)` | `normalize::strip_shadda` (+ `strip_shadda_into`) | done | verified: plain removal of `U+0651` (upstream's `is_vocalized` guard cannot change the result); keeps every other mark, so `strip_shadda∘strip_harakat == strip_tashkeel`; pinned by 9 unit + 4 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
-| `strip_small(text)` | `normalize::strip_small` | todo | **new row**: removes the `SMALL` class — `U+0670`, `U+06E5`, `U+06E6` |
+| `strip_small(text)` | `normalize::strip_small` (+ `strip_small_into`) | done | verified: removes the `SMALL` class (`U+0670`, `U+06E5`, `U+06E6`); disjoint from tashkeel/tatweel, so it commutes with both; pinned by 8 unit + 3 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
 | `strip_diacritics(text)` | `normalize::strip_diacritics` | todo | verified: upstream removes **every nonspacing mark (`Mn`) in `U+0600–U+06FE`**, computed from `unicodedata.category` — that is tashkeel + `U+0653`–`U+0655` + `U+0670` + the Qur'anic/extended marks, and it does **not** include `U+06E5`/`U+06E6` (category `Lm`). **Open decision:** mirror the category rule (needs a hand-written `Mn` range table, no dependency) or curate our own class and record a divergence |
 | `reduce_tashkeel(text)` | `normalize::reduce_tashkeel` | todo | verified: six ordered rules — (1) drop every `FATHA`/`SUKUN` not preceded by `WAW`/`YEH`, (2) drop `DAMMA` before `WAW`, (3) drop `KASRA` before `YEH`, (4) drop `FATHA` before `ALEF`, (5) drop `FATHA` after a word-initial `WAW`/`YEH`, (6) drop `KASRA` after `ALEF_HAMZA_BELOW` |
 | `normalize_teh(text)` | `normalize::normalize_teh` | todo | **new row**: `TEH_MARBUTA` → `HEH` (upstream keeps this apart from `normalize_spellerrors`) |

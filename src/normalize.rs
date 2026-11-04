@@ -19,7 +19,9 @@
 
 use std::borrow::Cow;
 
-use crate::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel, is_tatweel};
+use crate::unicode::classify::{
+    is_haraka, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
+};
 
 /// Removes every ḥaraka and shadda (`TASHKEEL`) from `text`, leaving all other characters alone.
 ///
@@ -421,6 +423,95 @@ pub fn strip_shadda_into<'a>(text: &str, out: &'a mut String) -> &'a mut String 
     strip_by_into(text, out, |_, ch| is_shadda(ch))
 }
 
+/// Removes every small (superscript) Arabic letter — the `SMALL` class — from `text`.
+///
+/// The removed code points are `U+0670` ARABIC LETTER SUPERSCRIPT ALEF, `U+06E5` ARABIC SMALL WAW
+/// and `U+06E6` ARABIC SMALL YEH.
+///
+/// Mirrors `PyArabic` `araby.strip_small` (also reachable upstream as
+/// `pyarabic.normalize.strip_small`).
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+/// use r_abic::normalize::strip_small;
+///
+/// // The superscript alef disappears; the letters and the other marks stay:
+/// assert_eq!(strip_small("الرَّحْمَٰن"), "الرَّحْمَن");
+///
+/// // With no small letter to remove the input is borrowed, not copied:
+/// assert!(matches!(strip_small("الرحمن"), Cow::Borrowed(_)));
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`, so it is always a
+/// `char` boundary (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// `U+0670` is a combining mark (`Mn`) while `U+06E5`/`U+06E6` are modifier letters (`Lm`);
+/// upstream groups all three as `SMALL`, and so do we. Unlike [`strip_tashkeel`] this transform
+/// never touches ḥarakāt or shadda, and unlike [`strip_tatweel`] it never touches `U+0640`; because
+/// the classes are disjoint it commutes with both. Tatweel, presentation forms (including the
+/// lam-alef ligatures), digits, punctuation, formatting code points and everything outside Arabic
+/// pass through unchanged. Marks are never reordered, and no normalization form is applied.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when `text` contains no small letter; otherwise
+/// allocates one `String` with the capacity of the input, copies the prefix before the first small
+/// letter with a single `push_str`, and filters the remainder.
+///
+/// # Parity
+///
+/// Same result as upstream for every input: upstream removes exactly the three `SMALL` code points,
+/// with no guard.
+#[must_use]
+pub fn strip_small(text: &str) -> Cow<'_, str> {
+    strip_by(text, |_, ch| is_small(ch))
+}
+
+/// Removes every small letter from `text` and writes the result into `out`.
+///
+/// Mirrors `PyArabic` `araby.strip_small`, but reuses a caller-owned buffer instead of returning a
+/// new string, which keeps hot loops free of allocations (`AGENTS.md` §3.3, §3.6).
+///
+/// `out` is **cleared first** and then replaced with the stripped text; the function returns `out` so
+/// calls can be chained.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::strip_small_into;
+///
+/// let mut buffer = String::from("stale content");
+/// strip_small_into("الرَّحْمَٰن", &mut buffer);
+/// assert_eq!(buffer, "الرَّحْمَن");
+///
+/// // The buffer is returned, so calls can be chained:
+/// let mut other = String::new();
+/// strip_small_into("الرَّحْمَٰن", &mut other).push('!');
+/// assert_eq!(other, "الرَّحْمَن!");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The removed and kept code points are exactly those documented on [`strip_small`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
+/// small letter is found, so repeated calls with clean input reuse the existing capacity.
+pub fn strip_small_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    strip_by_into(text, out, |_, ch| is_small(ch))
+}
+
 /// Removes every tanwīn mark and, at most, one trailing ḥaraka from `text`, keeping shadda.
 ///
 /// Mirrors `PyArabic` `araby.strip_lastharaka` — note the upstream spelling (`..._haraka`, not
@@ -559,9 +650,12 @@ where
 mod tests {
     use super::{
         strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
-        strip_shadda_into, strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
+        strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
+        strip_tatweel, strip_tatweel_into,
     };
-    use crate::unicode::classify::{is_haraka, is_shadda, is_tanwin, is_tashkeel, is_tatweel};
+    use crate::unicode::classify::{
+        is_haraka, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
+    };
     use crate::unicode::{constants, tables};
     use std::borrow::Cow;
 
@@ -1690,6 +1784,205 @@ mod tests {
 
         // The buffer is returned, so calls can be chained.
         strip_shadda_into("\u{0628}\u{0651}", &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0628}!");
+    }
+
+    /// `(input, expected)` pairs for `strip_small`, in the same escape convention as `CASES`.
+    ///
+    /// Only the three `SMALL` code points go (`U+0670` superscript alef, `U+06E5` small waw,
+    /// `U+06E6` small yeh); tashkeel, tatweel, presentation forms, digits and Latin text are all
+    /// preserved, so this transform is disjoint from the rest of the strip family.
+    const SMALL_CASES: &[(&str, &str)] = &[
+        // E1 — empty input; E2 — whitespace only.
+        ("", ""),
+        ("   \t\n", "   \t\n"),
+        // E3 — a small letter on its own disappears entirely.
+        ("\u{0670}", ""),
+        ("\u{06E5}", ""),
+        ("\u{06E6}", ""),
+        ("\u{0670}\u{06E5}\u{06E6}", ""),
+        // E4 — an orphan ḥaraka before a letter survives; a superscript alef inside a word goes.
+        ("\u{064E}\u{0628}", "\u{064E}\u{0628}"),
+        (
+            "\u{0645}\u{064E}\u{0670}\u{062D}",
+            "\u{0645}\u{064E}\u{062D}",
+        ),
+        // The famous الرَّحْمَٰن → الرَّحْمَن: only the superscript alef is removed.
+        (
+            "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0670}\u{0646}",
+            "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0646}",
+        ),
+        // E5/E6 — tashkeel and tatweel are not "small", so they stay.
+        (
+            "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}",
+            "\u{0627}\u{0644}\u{0652}\u{0639}\u{064E}\u{0628}\u{0650}\u{064A}\u{064E}\u{0651}\u{0629}",
+        ),
+        ("\u{0628}\u{0640}\u{062A}", "\u{0628}\u{0640}\u{062A}"),
+        // E7 — mixed script.
+        ("\u{0645}\u{0670}\u{062D} Book", "\u{0645}\u{062D} Book"),
+        // E8 — digits of the three sets.
+        (
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+        ),
+        // E9 — punctuation; E10 — astral characters.
+        (
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+            "\u{0645}\u{0631}\u{062D}\u{0628}\u{0627}\u{060C} \u{1F389}",
+        ),
+        // E11–E13 — joiners, directional marks and BOM.
+        ("\u{0628}\u{200D}\u{062A}", "\u{0628}\u{200D}\u{062A}"),
+        ("\u{200F}\u{0645}", "\u{200F}\u{0645}"),
+        ("\u{FEFF}\u{0645}", "\u{FEFF}\u{0645}"),
+        // E14–E16 — presentation forms and ligatures pass through unchanged.
+        ("\u{FE8D}\u{FE8E}", "\u{FE8D}\u{FE8E}"),
+        ("\u{FEFB}\u{0651}", "\u{FEFB}\u{0651}"),
+        // E17 — line terminators preserved exactly.
+        (
+            "\u{0623}\u{0670}\u{0628}\r\n\u{062A}",
+            "\u{0623}\u{0628}\r\n\u{062A}",
+        ),
+        (
+            "\u{0623}\u{0670}\u{0628}\n\u{062A}",
+            "\u{0623}\u{0628}\n\u{062A}",
+        ),
+        // E19 — stacked small letters all go.
+        ("\u{0670}\u{0670}\u{0670}", ""),
+        // E20 — no normalization is applied.
+        ("\u{0627}\u{0654}", "\u{0627}\u{0654}"),
+    ];
+
+    #[test]
+    fn strip_small_matches_the_case_table() {
+        for &(input, expected) in SMALL_CASES {
+            assert_eq!(strip_small(input), expected, "input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn strip_small_removes_exactly_the_small_class_and_nothing_else() {
+        for code in 0x0600u32..=0x06FF {
+            let Some(c) = char::from_u32(code) else {
+                continue;
+            };
+            let input = c.to_string();
+            assert_eq!(
+                strip_small(&input).is_empty(),
+                is_small(c),
+                "U+{code:04X} must be removed only when it is small"
+            );
+        }
+
+        // Nothing outside the block is touched either.
+        for kept in [
+            "\u{064E}",
+            "\u{0651}",
+            "\u{0640}",
+            "\u{0653}",
+            "\u{0654}",
+            "\u{0655}",
+            "\u{0300}",
+            "\u{FEFB}",
+            "a",
+            "\u{1F389}",
+        ] {
+            assert_eq!(strip_small(kept), kept, "{kept:?} must be kept");
+        }
+    }
+
+    #[test]
+    fn strip_small_matches_the_small_table() {
+        assert_eq!(
+            tables::SMALL.len(),
+            3,
+            "superscript alef, small waw, small yeh"
+        );
+        for &small in tables::SMALL {
+            assert_eq!(strip_small(&small.to_string()), "", "{small:?} must go");
+        }
+    }
+
+    #[test]
+    fn strip_small_removes_only_the_small_letters_own_bytes() {
+        let input = "\u{0628}\u{0670}\u{1F389}\u{06E5}";
+        let output = strip_small(input);
+
+        assert_eq!(output, "\u{0628}\u{1F389}");
+        assert_eq!(
+            input.len() - output.len(),
+            4,
+            "two two-byte small letters were removed"
+        );
+        assert!(
+            input.is_char_boundary(input.len()),
+            "no code point is split"
+        );
+    }
+
+    #[test]
+    fn strip_small_borrows_input_without_a_small_letter() {
+        for clean in [
+            "",
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}",
+            "\u{0628}\u{064E}\u{0651}",
+            "\u{0640}",
+            "\u{FEFB}",
+            "\u{1F389}",
+        ] {
+            assert!(
+                matches!(strip_small(clean), Cow::Borrowed(_)),
+                "nothing to remove in {clean:?}"
+            );
+        }
+        assert!(
+            matches!(strip_small("\u{0628}\u{0670}"), Cow::Owned(_)),
+            "a small letter forces an allocation"
+        );
+    }
+
+    #[test]
+    fn strip_small_commutes_with_the_mark_strippers() {
+        // `SMALL` is disjoint from tashkeel and tatweel, so the transforms never interfere.
+        for &(input, _) in CASES
+            .iter()
+            .chain(HARAKAT_CASES)
+            .chain(TATWEEL_CASES)
+            .chain(SHADDA_CASES)
+        {
+            assert_eq!(
+                strip_small(&strip_tashkeel(input)),
+                strip_tashkeel(&strip_small(input)),
+                "counterexample: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_small_matches_the_word_spelled_out_in_the_documentation() {
+        // Pins the escape spelling of the doc example (الرَّحْمَٰن), so a hand-typed superscript
+        // alef can never silently change what the documentation promises.
+        let vocalized = "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0670}\u{0646}";
+        assert_eq!(
+            strip_small(vocalized),
+            "\u{0627}\u{0644}\u{0631}\u{0651}\u{064E}\u{062D}\u{0652}\u{0645}\u{064E}\u{0646}"
+        );
+    }
+
+    #[test]
+    fn strip_small_into_clears_the_buffer_and_matches_the_case_table() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, expected) in SMALL_CASES {
+            strip_small_into(input, &mut buffer);
+            assert_eq!(buffer, expected, "input: {input:?}");
+        }
+
+        strip_small_into("\u{0628}\u{0670}\u{062A}", &mut buffer);
+        assert_eq!(buffer, "\u{0628}\u{062A}");
+        strip_small_into("", &mut buffer);
+        assert_eq!(buffer, "");
+
+        // The buffer is returned, so calls can be chained.
+        strip_small_into("\u{0628}\u{0670}", &mut buffer).push('!');
         assert_eq!(buffer, "\u{0628}!");
     }
 }

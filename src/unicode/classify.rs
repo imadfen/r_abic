@@ -16,7 +16,9 @@
 //!
 //! Nothing here panics; classification never depends on the caller's locale.
 
-use super::constants::{HAMZA, HAMZA_ABOVE, HAMZA_BELOW, SHADDA, SUKUN, TATWEEL};
+use super::constants::{
+    HAMZA, HAMZA_ABOVE, HAMZA_BELOW, SHADDA, SMALL_ALEF, SMALL_WAW, SMALL_YEH, SUKUN, TATWEEL,
+};
 
 /// Returns `true` if `c` is a ḥaraka (`HARAKAT`: tanwīn, short vowels, sukūn), excluding shadda.
 ///
@@ -79,6 +81,34 @@ pub const fn is_sukun(c: char) -> bool {
 #[must_use]
 pub const fn is_tatweel(c: char) -> bool {
     c == TATWEEL
+}
+
+/// Returns `true` if `c` is a small (superscript) Arabic letter — the `SMALL` class: superscript
+/// alef (`U+0670`), small waw (`U+06E5`) and small yeh (`U+06E6`).
+///
+/// Mirrors `PyArabic` `araby.is_small` (membership in `SMALL`).
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::unicode::{
+///     classify::is_small,
+///     constants::{ALEF, SMALL_ALEF, SMALL_WAW, SMALL_YEH},
+/// };
+///
+/// assert!(is_small(SMALL_ALEF));
+/// assert!(is_small(SMALL_WAW));
+/// assert!(is_small(SMALL_YEH));
+/// assert!(!is_small(ALEF));
+/// ```
+///
+/// # Unicode
+///
+/// `U+0670` is a combining mark (general category `Mn`) while `U+06E5`/`U+06E6` are modifier
+/// letters (`Lm`); upstream groups all three as `SMALL`, and so do we.
+#[must_use]
+pub const fn is_small(c: char) -> bool {
+    matches!(c, SMALL_ALEF | SMALL_WAW | SMALL_YEH)
 }
 
 /// Returns `true` for the eight lam-alef ligature presentation forms (`U+FEF5`–`U+FEFC`).
@@ -253,8 +283,8 @@ mod tests {
         has_harakat, has_shadda, has_tashkeel, is_arabic_block_char, is_arabic_digit,
         is_arabic_indic_digit, is_arabic_letter, is_arabicrange, is_arabicword,
         is_extended_arabic_indic_digit, is_formatting, is_hamza, is_hamza_above, is_hamza_below,
-        is_haraka, is_ligature, is_shadda, is_short_haraka, is_sukun, is_tanwin, is_tashkeel,
-        is_tatweel, is_vocalized, is_vowel,
+        is_haraka, is_ligature, is_shadda, is_short_haraka, is_small, is_sukun, is_tanwin,
+        is_tashkeel, is_tatweel, is_vocalized, is_vowel,
     };
     use crate::unicode::constants::*;
     use crate::unicode::tables::{self, LETTERS, SHORTHARAKAT, TANWIN, TASHKEEL};
@@ -596,6 +626,46 @@ mod tests {
                 is_haraka(c),
                 "is_vowel mirrors is_haraka: U+{code:04X}"
             );
+        }
+    }
+
+    #[test]
+    fn is_small_is_exactly_the_small_table() {
+        // `is_small` mirrors upstream `araby.is_small`: plain membership in `SMALL`.
+        assert_eq!(
+            tables::SMALL.len(),
+            3,
+            "superscript alef, small waw, small yeh"
+        );
+        for &small in tables::SMALL {
+            assert!(is_small(small), "SMALL member {small:?}");
+            assert!(
+                !is_arabic_letter(small),
+                "small letters are not base letters: {small:?}"
+            );
+        }
+        for code in 0u32..=0x06FF {
+            let Some(c) = char::from_u32(code) else {
+                continue;
+            };
+            assert_eq!(
+                is_small(c),
+                tables::SMALL.contains(&c),
+                "U+{code:04X} must be small iff it is in SMALL"
+            );
+        }
+        // Explicit negatives: marks, tatweel, letters, Latin and astral are never "small".
+        for not_small in [
+            SHADDA,
+            SUKUN,
+            FATHA,
+            TATWEEL,
+            ALEF,
+            ALEF_MAKSURA,
+            'a',
+            '\u{1F389}',
+        ] {
+            assert!(!is_small(not_small), "{not_small:?} is not small");
         }
     }
 }
