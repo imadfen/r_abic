@@ -7,7 +7,7 @@ Living tracker for behavioural parity with PyArabic
 `TBD` in a note means "upstream semantics not verified yet" — such a symbol must never be marked
 `done`.
 
-**Last updated:** 2026-11-03 (Phase 1 started: `normalize::strip_tashkeel`).
+**Last updated:** 2026-11-04 (Phase 1 continuing: the `normalize` strip family — `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`).
 
 ---
 
@@ -83,8 +83,8 @@ Everything below was re-verified on 2026-11-03 against a local `tools/oracle/` c
 | `strip_tashkeel(text)` | `normalize::strip_tashkeel` (+ `strip_tashkeel_into`) | done | `Cow` fast path + `_into` buffer reuse; pinned by 10 unit + 4 property + 8 integration tests + 3 doctests; bench `benches/normalize.rs` |
 | `strip_harakat(text)` | `normalize::strip_harakat` (+ `strip_harakat_into`) | done | verified: removes the 7 `HARAKAT` marks and **keeps shadda** — upstream's `is_vocalized` guard cannot change the result; pinned by 9 unit + 3 integration + 5 property tests and 2 doctests; bench `benches/normalize.rs` |
 | `strip_lastharaka(text)` | `normalize::strip_lastharaka` (+ `strip_lastharaka_into`) | done | verified: removes every `TANWIN` mark anywhere plus **one** trailing `HARAKAT` (`[HARAKAT]$|[TANWIN]`), so it is deliberately **not idempotent**; the `$` anchor is mirrored exactly, including its match just before a single trailing `\n`; pinned by 6 unit + 3 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
-| `strip_tatweel(text)` | `normalize::strip_tatweel` | todo | verified: plain removal of `U+0640` |
-| `strip_shadda(text)` | `normalize::strip_shadda` | todo | verified: plain removal of `U+0651` (no `is_vocalized` guard) |
+| `strip_tatweel(text)` | `normalize::strip_tatweel` (+ `strip_tatweel_into`) | done | verified: plain removal of `U+0640` (the `NOT_DEF_HARAKA` alias is the same code point); pinned by 7 unit + 3 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
+| `strip_shadda(text)` | `normalize::strip_shadda` (+ `strip_shadda_into`) | done | verified: plain removal of `U+0651` (upstream's `is_vocalized` guard cannot change the result); keeps every other mark, so `strip_shadda∘strip_harakat == strip_tashkeel`; pinned by 9 unit + 4 integration + 1 property test and 2 doctests; bench `benches/normalize.rs` |
 | `strip_small(text)` | `normalize::strip_small` | todo | **new row**: removes the `SMALL` class — `U+0670`, `U+06E5`, `U+06E6` |
 | `strip_diacritics(text)` | `normalize::strip_diacritics` | todo | verified: upstream removes **every nonspacing mark (`Mn`) in `U+0600–U+06FE`**, computed from `unicodedata.category` — that is tashkeel + `U+0653`–`U+0655` + `U+0670` + the Qur'anic/extended marks, and it does **not** include `U+06E5`/`U+06E6` (category `Lm`). **Open decision:** mirror the category rule (needs a hand-written `Mn` range table, no dependency) or curate our own class and record a divergence |
 | `reduce_tashkeel(text)` | `normalize::reduce_tashkeel` | todo | verified: six ordered rules — (1) drop every `FATHA`/`SUKUN` not preceded by `WAW`/`YEH`, (2) drop `DAMMA` before `WAW`, (3) drop `KASRA` before `YEH`, (4) drop `FATHA` before `ALEF`, (5) drop `FATHA` after a word-initial `WAW`/`YEH`, (6) drop `KASRA` after `ALEF_HAMZA_BELOW` |
