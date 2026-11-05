@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 use r_abic::normalize::{
+    normalize_lamalef, normalize_lamalef_into, normalize_ligature, normalize_ligature_into,
     strip_diacritics, strip_diacritics_into, strip_harakat, strip_harakat_into, strip_lastharaka,
     strip_lastharaka_into, strip_shadda, strip_shadda_into, strip_small, strip_small_into,
     strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
@@ -402,4 +403,62 @@ fn strip_diacritics_into_can_reuse_one_buffer() {
 
         assert_eq!(buffer, expected, "word: {word:?}");
     }
+}
+
+#[test]
+fn normalize_ligature_expands_lam_alef_forms() {
+    // All four pairs, isolated form then final form, become two letters.
+    for (ligature, letters) in [
+        ('\u{FEF5}', "\u{0644}\u{0622}"),
+        ('\u{FEF6}', "\u{0644}\u{0622}"),
+        ('\u{FEF7}', "\u{0644}\u{0623}"),
+        ('\u{FEF8}', "\u{0644}\u{0623}"),
+        ('\u{FEF9}', "\u{0644}\u{0625}"),
+        ('\u{FEFA}', "\u{0644}\u{0625}"),
+        ('\u{FEFB}', "\u{0644}\u{0627}"),
+        ('\u{FEFC}', "\u{0644}\u{0627}"),
+    ] {
+        assert_eq!(
+            normalize_ligature(&ligature.to_string()),
+            letters,
+            "{ligature:?}"
+        );
+    }
+
+    // The documented alias agrees, and clean input is borrowed.
+    assert_eq!(
+        normalize_lamalef("\u{FEFB}"),
+        normalize_ligature("\u{FEFB}")
+    );
+    assert!(matches!(normalize_ligature(PLAIN_WORD), Cow::Borrowed(_)));
+}
+
+#[test]
+fn normalize_ligature_keeps_surrounding_text_and_marks() {
+    // A ligature between letters, followed by a shadda that stays on the expanded pair.
+    let input = "\u{0628}\u{FEFB}\u{0651}\u{062A}";
+    assert_eq!(
+        normalize_ligature(input),
+        "\u{0628}\u{0644}\u{0627}\u{0651}\u{062A}"
+    );
+    assert!(matches!(normalize_ligature(input), Cow::Owned(_)));
+}
+
+#[test]
+fn normalize_ligature_into_can_reuse_one_buffer() {
+    let mut buffer = String::new();
+
+    for (word, expected) in [
+        ("\u{FEFB}", "\u{0644}\u{0627}"),
+        ("\u{FEF5}\u{FEF9}", "\u{0644}\u{0622}\u{0644}\u{0625}"),
+        (PLAIN_WORD, PLAIN_WORD),
+    ] {
+        normalize_ligature_into(word, &mut buffer);
+
+        assert_eq!(buffer, expected, "word: {word:?}");
+    }
+
+    // The alias writes into the same buffer.
+    normalize_lamalef_into("\u{FEF8}", &mut buffer);
+    assert_eq!(buffer, "\u{0644}\u{0623}");
 }
