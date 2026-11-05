@@ -10,12 +10,13 @@ use std::borrow::Cow;
 
 use common::{ALPHABET, Rng};
 use r_abic::normalize::{
+    normalize_lamalef, normalize_lamalef_into, normalize_ligature, normalize_ligature_into,
     strip_diacritics, strip_diacritics_into, strip_harakat, strip_harakat_into, strip_lastharaka,
     strip_lastharaka_into, strip_shadda, strip_shadda_into, strip_small, strip_small_into,
     strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify::{
-    is_haraka, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
+    is_haraka, is_ligature, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
 };
 
 /// One row of [`STRIPPERS`]: a name for the failure message, the transform, the predicate that says
@@ -274,6 +275,49 @@ fn strip_harakat_keeps_the_shadda_that_strip_tashkeel_removes() {
             strip_tashkeel(&harakat),
             strip_tashkeel(&input),
             "counterexample: {input:?}"
+        );
+    }
+}
+
+#[test]
+fn normalize_ligature_expands_every_form_and_is_idempotent() {
+    let mut buffer = String::from("stale content that must be cleared");
+
+    for input in samples() {
+        let output = normalize_ligature(&input).into_owned();
+
+        // Expansion only ever adds characters (one per ligature) and leaves none behind.
+        assert!(
+            output.chars().count() >= input.chars().count(),
+            "counterexample: {input:?} -> {output:?}"
+        );
+        assert!(
+            !output.chars().any(is_ligature),
+            "counterexample: {input:?} -> {output:?}"
+        );
+        assert_eq!(
+            normalize_ligature(&output).into_owned(),
+            output,
+            "idempotent: {input:?}"
+        );
+
+        // The alias and the `_into` variant agree with the primary name.
+        assert_eq!(normalize_lamalef(&input).into_owned(), output);
+        normalize_ligature_into(&input, &mut buffer);
+        assert_eq!(buffer, output, "normalize_ligature_into: {input:?}");
+        normalize_lamalef_into(&input, &mut buffer);
+        assert_eq!(buffer, output, "normalize_lamalef_into: {input:?}");
+    }
+}
+
+#[test]
+fn normalize_ligature_borrows_input_that_has_no_ligature() {
+    for input in samples() {
+        let clean: String = input.chars().filter(|c| !is_ligature(*c)).collect();
+
+        assert!(
+            matches!(normalize_ligature(&clean), Cow::Borrowed(_)),
+            "counterexample: {clean:?}"
         );
     }
 }

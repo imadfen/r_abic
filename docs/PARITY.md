@@ -7,7 +7,7 @@ Living tracker for behavioural parity with PyArabic
 `TBD` in a note means "upstream semantics not verified yet" — such a symbol must never be marked
 `done`.
 
-**Last updated:** 2026-11-04 (Phase 1 continuing: the `normalize` strip family — `strip_tashkeel`, `strip_harakat`, `strip_lastharaka`, `strip_tatweel`, `strip_shadda`, `strip_small`, `strip_diacritics`).
+**Last updated:** 2026-11-04 (Phase 1 continuing: the `normalize` strip family is complete; `normalize_ligature`/`normalize_lamalef` added).
 
 ---
 
@@ -92,8 +92,8 @@ Everything below was re-verified on 2026-11-03 against a local `tools/oracle/` c
 | `normalize_teh(text)` | `normalize::normalize_teh` | todo | **new row**: `TEH_MARBUTA` → `HEH` (upstream keeps this apart from `normalize_spellerrors`) |
 | `normalize_alef(text)` | `normalize::normalize_alef` | todo | **new row**: every `ALEFAT` form → `ALEF`, with the `SMALL_ALEF`↔`ALEF_MAKSURA` special cases removed first |
 | `normalize_hamza(word, method="uniform")` | `normalize::normalize_hamza` | todo | verified against a local `araby.py` (`tools/oracle/`, dev-only): `HamzaMethod::{Uniform, Tasheel}`; `tasheel` folds each hamza onto its carrier (alef-madda/alef-hamza/combining hamzas → `ALEF`, `WAW_HAMZA` → `WAW`, `YEH_HAMZA` → `YEH`), `uniform` (the default) maps the whole `HAMZAT` class → `HAMZA` and expands `ALEF_MADDA` → `HAMZA`+`HAMZA` with a leading-madda special case; upstream is *word*-scoped (`word[1]`/`word[2]` indexing) and its docstring wrongly claims it also simplifies lam-alef. `normalize.py`'s no-argument twin folds the alef family to `ALEF` first, so the two upstream modules disagree — we keep one canonical location and pin the mirrored semantics with tests |
-| `normalize_ligature(text)` | `normalize::normalize_ligature` | todo | |
-| `normalize_lamalef(text)` | `normalize::normalize_lamalef` | todo | alias of `normalize_ligature` |
+| `normalize_ligature(text)` | `normalize::normalize_ligature` (+ `normalize_ligature_into`) | divergent | expands all eight lam-alef forms (`U+FEF5`–`U+FEFC`, isolated + final) to `LAM` + alef, a **superset** of upstream's four isolated forms → D-008; pinned by 6 unit + 3 integration + 2 property tests and 2 doctests; bench `benches/normalize.rs` |
+| `normalize_lamalef(text)` | `normalize::normalize_lamalef` (+ `normalize_lamalef_into`) | divergent | alias of `normalize_ligature` (as upstream) → D-008 applies; pinned by the same tests |
 | `normalize_spellerrors(text)` | `normalize::normalize_spellerrors` | todo | teh marbuta → heh, alef maksura → yeh |
 | `normalize_searchtext(text)` | `normalize::normalize_searchtext` | todo | pipeline order is part of the contract |
 | `fix_spaces(text)` | `tokenize::fix_spaces` | todo | verified: upstream defines it in `araby` (`araby.py:1434`) and it collapses runs of spaces outside words; our home is `tokenize` per `AGENTS.md` §3.2 (corrected — was listed under `normalize`) |
