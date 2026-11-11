@@ -91,3 +91,20 @@ Statuses: `intentional, permanent` · `intentional, temporary` · `needs maintai
   `is_arabicrange` return `true` for text that `unshape` is meant to rewrite. Changing the predicate
   needs an ADR plus a `!` commit, so it stays recorded here.
 - **Status:** intentional, temporary.
+
+## D-008 — `normalize_ligature` expands all eight lam-alef forms
+
+- **Upstream:** `araby.normalize_ligature` (and its alias `normalize_lamalef`) expands only the four
+  **isolated** lam-alef forms (`U+FEF5`, `U+FEF7`, `U+FEF9`, `U+FEFB`, i.e. `araby_const.LIGUATURES`),
+  so the four **final** forms (`U+FEF6`, `U+FEF8`, `U+FEFA`, `U+FEFC`) are left untouched.
+- **r_abic:** `normalize::normalize_ligature` (and its alias `normalize::normalize_lamalef`) expand
+  **all eight** forms — both the isolated and the final one of each of the four pairs — to `LAM` + the
+  corresponding alef letter.
+- **Rationale:** the final forms occur in real text and are already recognised by
+  `unicode::classify::is_ligature` (D-005); expanding their isolated siblings while leaving them
+  ligated is a silent data gap, and `AGENTS.md` §1.1 states the goal is a well-specified *superset* of
+  PyArabic. Same reasoning as D-005.
+- **Decision:** no ADR (a small, local superset consistent with D-005) · **Pinned by:**
+  `src/normalize.rs::tests::normalize_ligature_expands_all_eight_forms_and_leaves_none` and
+  `tests/normalize_public_api.rs::normalize_ligature_expands_lam_alef_forms`
+- **Status:** intentional, permanent

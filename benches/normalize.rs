@@ -11,10 +11,10 @@ use std::hint::black_box;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 use r_abic::normalize::{
-    strip_diacritics, strip_harakat, strip_lastharaka, strip_shadda, strip_small, strip_tashkeel,
-    strip_tatweel,
+    normalize_ligature, strip_diacritics, strip_harakat, strip_lastharaka, strip_shadda,
+    strip_small, strip_tashkeel, strip_tatweel,
 };
-use r_abic::unicode::constants::{SMALL_ALEF, TATWEEL};
+use r_abic::unicode::constants::{LAM_ALEF, SMALL_ALEF, TATWEEL};
 
 /// A fully vocalized sentence: the realistic worst case, where nearly every letter carries a mark.
 const VOCALIZED: &str = "الْعَرَبِيَّةُ لُغَةٌ جَمِيلَةٌ وَاسِعَةُ الِانْتِشَارِ";
@@ -120,6 +120,16 @@ fn bench_strip_diacritics(c: &mut Criterion) {
     sweep(c, "strip_diacritics", strip_diacritics);
 }
 
+fn bench_normalize_ligature(c: &mut Criterion) {
+    let interleaved = interleave(VOCALIZED, LAM_ALEF);
+    sweep_sizes(
+        c,
+        "normalize_ligature",
+        normalize_ligature,
+        &sizes(&interleaved, PLAIN),
+    );
+}
+
 criterion_group!(
     benches,
     bench_strip_tashkeel,
@@ -128,6 +138,7 @@ criterion_group!(
     bench_strip_tatweel,
     bench_strip_shadda,
     bench_strip_small,
-    bench_strip_diacritics
+    bench_strip_diacritics,
+    bench_normalize_ligature
 );
 criterion_main!(benches);

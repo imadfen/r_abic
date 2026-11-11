@@ -22,6 +22,10 @@ use std::borrow::Cow;
 use crate::unicode::classify::{
     is_haraka, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
 };
+use crate::unicode::constants::{
+    LAM_ALEF, LAM_ALEF_HAMZA_ABOVE, LAM_ALEF_HAMZA_BELOW, LAM_ALEF_MADDA_ABOVE, SIMPLE_LAM_ALEF,
+    SIMPLE_LAM_ALEF_HAMZA_ABOVE, SIMPLE_LAM_ALEF_HAMZA_BELOW, SIMPLE_LAM_ALEF_MADDA_ABOVE,
+};
 
 /// Removes every ḥaraka and shadda (`TASHKEEL`) from `text`, leaving all other characters alone.
 ///
@@ -157,6 +161,76 @@ where
     }
 
     out
+}
+
+/// Replaces every character `replacement` maps to `Some`, borrowing `text` when nothing changes.
+///
+/// The `normalize_*` counterpart of [`strip_by`] (`AGENTS.md` §3.5): same "scan for the first change,
+/// copy the clean prefix with one `push_str`, transform the rest" shape, but a replacement may
+/// *grow* the text (one lam-alef ligature expands to two letters), so the result cannot alias the
+/// input once anything changes — `Cow::Borrowed` is returned only when no character is replaced.
+fn replace_by<F>(text: &str, replacement: F) -> Cow<'_, str>
+where
+    F: Fn(char) -> Option<&'static str>,
+{
+    let Some(first) = first_replaced(text, &replacement) else {
+        return Cow::Borrowed(text);
+    };
+
+    debug_assert!(text.is_char_boundary(first));
+
+    let mut out = String::with_capacity(text.len());
+    out.push_str(&text[..first]);
+    push_replaced(&text[first..], &mut out, &replacement);
+    Cow::Owned(out)
+}
+
+/// `replace_by` into a caller-owned buffer: clears `out`, then writes the result and returns it.
+///
+/// Memory is reserved only when something is actually replaced, so repeated calls with clean input
+/// reuse the capacity the buffer already has (`AGENTS.md` §3.3, §3.6).
+fn replace_by_into<'a, F>(text: &str, out: &'a mut String, replacement: F) -> &'a mut String
+where
+    F: Fn(char) -> Option<&'static str>,
+{
+    out.clear();
+
+    match first_replaced(text, &replacement) {
+        // Nothing to replace: copy the input and keep whatever capacity the buffer already has.
+        None => out.push_str(text),
+        Some(first) => {
+            debug_assert!(text.is_char_boundary(first));
+
+            out.reserve(text.len());
+            out.push_str(&text[..first]);
+            push_replaced(&text[first..], out, &replacement);
+        }
+    }
+
+    out
+}
+
+/// The byte offset of the first character `replacement` maps away, or `None` when none does.
+fn first_replaced<F>(text: &str, replacement: &F) -> Option<usize>
+where
+    F: Fn(char) -> Option<&'static str>,
+{
+    text.char_indices()
+        .find(|&(_, ch)| replacement(ch).is_some())
+        .map(|(index, _)| index)
+}
+
+/// Appends `text` to `out`, writing each character's replacement text (or the character itself).
+fn push_replaced<F>(text: &str, out: &mut String, replacement: &F)
+where
+    F: Fn(char) -> Option<&'static str>,
+{
+    for ch in text.chars() {
+        match replacement(ch) {
+            Some(extra) => out.push_str(extra),
+            None => out.push(ch),
+        }
+    }
 }
 
 /// Removes every ḥaraka (`HARAKAT`) from `text` and **keeps shadda**.
@@ -712,6 +786,163 @@ pub fn strip_lastharaka_into<'a>(text: &str, out: &'a mut String) -> &'a mut Str
     })
 }
 
+/// Maps a lam-alef ligature code point to its two-letter sequence, or `None` for every other
+/// character.
+///
+/// All eight forms are covered — the four isolated forms and their four final forms (`AGENTS.md`
+/// §4.3 E15) — which is a **superset** of upstream's four isolated forms (`DIVERGENCES.md` D-008).
+fn ligature_replacement(c: char) -> Option<&'static str> {
+    match c {
+        LAM_ALEF_MADDA_ABOVE | '\u{FEF6}' => Some(SIMPLE_LAM_ALEF_MADDA_ABOVE),
+        LAM_ALEF_HAMZA_ABOVE | '\u{FEF8}' => Some(SIMPLE_LAM_ALEF_HAMZA_ABOVE),
+        LAM_ALEF_HAMZA_BELOW | '\u{FEFA}' => Some(SIMPLE_LAM_ALEF_HAMZA_BELOW),
+        LAM_ALEF | '\u{FEFC}' => Some(SIMPLE_LAM_ALEF),
+        _ => None,
+    }
+}
+
+/// Expands every lam-alef ligature in `text` into the two letters `LAM` + alef.
+///
+/// Mirrors `PyArabic` `araby.normalize_ligature`.
+///
+/// # Examples
+///
+/// ```
+/// use std::borrow::Cow;
+/// use r_abic::normalize::normalize_ligature;
+/// use r_abic::unicode::constants::{LAM_ALEF, SIMPLE_LAM_ALEF};
+///
+/// // The ligature becomes the two letters `LAM` + `ALEF`:
+/// let ligature = LAM_ALEF.to_string();
+/// let expanded = normalize_ligature(&ligature);
+/// assert_eq!(expanded, SIMPLE_LAM_ALEF);
+/// assert_eq!(expanded.chars().count(), 2);
+///
+/// // With no ligature the input is borrowed, not copied:
+/// assert!(matches!(normalize_ligature("العربية"), Cow::Borrowed(_)));
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`, so it is always a
+/// `char` boundary (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// Expands every lam-alef ligature presentation form (`U+FEF5`–`U+FEFC`): the four isolated forms and
+/// their four final forms (`AGENTS.md` §4.3 E15). Each expands to two code points — `LAM` (`U+0644`)
+/// followed by `ALEF`, `ALEF_MADDA`, `ALEF_HAMZA_ABOVE` or `ALEF_HAMZA_BELOW` — so the output is
+/// **longer** than the input and byte offsets do not survive the transform. A mark that follows a
+/// ligature stays attached to the expanded pair's last letter (E16). No other code point changes:
+/// marks, digits, punctuation, formatting code points, non-ligature presentation forms and
+/// everything outside Arabic pass through unchanged, and no normalization form is applied.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when `text` contains no ligature; otherwise
+/// allocates one `String` with the capacity of the input (it may grow once, since each ligature adds
+/// one code point), copies the prefix before the first ligature with a single `push_str`, and
+/// transforms the remainder.
+///
+/// # Parity
+///
+/// Same result as upstream for the four isolated forms; upstream does **not** expand the four final
+/// forms, so this is a documented superset (`DIVERGENCES.md` D-008).
+#[must_use]
+pub fn normalize_ligature(text: &str) -> Cow<'_, str> {
+    replace_by(text, ligature_replacement)
+}
+
+/// Expands every lam-alef ligature in `text` into two letters and writes the result into `out`.
+///
+/// Mirrors `PyArabic` `araby.normalize_ligature`, but reuses a caller-owned buffer instead of
+/// returning a new string, which keeps hot loops free of allocations (`AGENTS.md` §3.3, §3.6).
+///
+/// `out` is **cleared first** and then replaced with the expanded text; the function returns `out` so
+/// calls can be chained.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::normalize_ligature_into;
+///
+/// let mut buffer = String::from("stale content");
+/// normalize_ligature_into("\u{FEFB}", &mut buffer);
+/// assert_eq!(buffer, "\u{0644}\u{0627}");
+///
+/// // The buffer is returned, so calls can be chained:
+/// let mut other = String::new();
+/// normalize_ligature_into("\u{FEFB}", &mut other).push('!');
+/// assert_eq!(other, "\u{0644}\u{0627}!");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The expanded and kept code points are exactly those documented on [`normalize_ligature`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when a
+/// ligature is found, so repeated calls with clean input reuse the existing capacity.
+pub fn normalize_ligature_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    replace_by_into(text, out, ligature_replacement)
+}
+
+/// Expands every lam-alef ligature in `text` — an alias of [`normalize_ligature`].
+///
+/// Mirrors `PyArabic` `araby.normalize_lamalef`, which upstream also implements as an alias of its
+/// `normalize_ligature`, so the two names are interchangeable (`DIVERGENCES.md` D-008 applies to
+/// both: all eight forms are expanded).
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::{normalize_lamalef, normalize_ligature};
+///
+/// assert_eq!(normalize_lamalef("\u{FEFB}"), normalize_ligature("\u{FEFB}"));
+/// assert_eq!(normalize_lamalef("\u{FEFB}"), "\u{0644}\u{0627}");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Parity
+///
+/// Same as [`normalize_ligature`].
+#[must_use]
+pub fn normalize_lamalef(text: &str) -> Cow<'_, str> {
+    normalize_ligature(text)
+}
+
+/// Expands every lam-alef ligature in `text` into two letters and writes the result into `out` — an
+/// alias of [`normalize_ligature_into`].
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::normalize_lamalef_into;
+///
+/// let mut buffer = String::new();
+/// normalize_lamalef_into("\u{FEF7}", &mut buffer);
+/// assert_eq!(buffer, "\u{0644}\u{0623}");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Parity
+///
+/// Same as [`normalize_ligature_into`].
+pub fn normalize_lamalef_into<'a>(text: &str, out: &'a mut String) -> &'a mut String {
+    normalize_ligature_into(text, out)
+}
+
 /// `true` when upstream's `[HARAKAT]$|[TANWIN]` pattern matches the character at `index`: every
 /// tanwīn mark, plus any ḥaraka that sits where Python's `$` anchor matches ([`at_pattern_end`]).
 fn is_stripped_by_lastharaka(text: &str, index: usize, ch: char) -> bool {
@@ -760,13 +991,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        is_arabic_nonspacing_mark, strip_diacritics, strip_diacritics_into, strip_harakat,
+        is_arabic_nonspacing_mark, normalize_lamalef, normalize_lamalef_into, normalize_ligature,
+        normalize_ligature_into, strip_diacritics, strip_diacritics_into, strip_harakat,
         strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
         strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
         strip_tatweel, strip_tatweel_into,
     };
     use crate::unicode::classify::{
-        is_haraka, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
+        is_haraka, is_ligature, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
     };
     use crate::unicode::{constants, tables};
     use std::borrow::Cow;
@@ -2295,5 +2527,174 @@ mod tests {
         // The buffer is returned, so calls can be chained.
         strip_diacritics_into("\u{0628}\u{064E}", &mut buffer).push('!');
         assert_eq!(buffer, "\u{0628}!");
+    }
+
+    /// `(input, expected)` pairs for `normalize_ligature`, in the same escape convention as `CASES`.
+    ///
+    /// Every lam-alef ligature — all four letter pairs in both the isolated and the final form —
+    /// expands to two letters (`U+FEF5`–`U+FEFC` → `LAM` + the corresponding alef). Everything else,
+    /// including the surrounding letters and any mark after the ligature, is copied through.
+    const LIGATURE_CASES: &[(&str, &str)] = &[
+        // E1 — empty input; E2 — whitespace only.
+        ("", ""),
+        ("   \t\n", "   \t\n"),
+        // E15 — each of the eight forms expands to its two letters.
+        ("\u{FEF5}", "\u{0644}\u{0622}"),
+        ("\u{FEF6}", "\u{0644}\u{0622}"),
+        ("\u{FEF7}", "\u{0644}\u{0623}"),
+        ("\u{FEF8}", "\u{0644}\u{0623}"),
+        ("\u{FEF9}", "\u{0644}\u{0625}"),
+        ("\u{FEFA}", "\u{0644}\u{0625}"),
+        ("\u{FEFB}", "\u{0644}\u{0627}"),
+        ("\u{FEFC}", "\u{0644}\u{0627}"),
+        // Consecutive ligatures both expand, in place.
+        ("\u{FEFB}\u{FEF7}", "\u{0644}\u{0627}\u{0644}\u{0623}"),
+        // A ligature between letters expands without disturbing them.
+        (
+            "\u{0628}\u{FEFB}\u{062A}",
+            "\u{0628}\u{0644}\u{0627}\u{062A}",
+        ),
+        // E16 — a mark that follows a ligature stays attached to the expanded pair's last letter.
+        ("\u{FEFB}\u{0651}", "\u{0644}\u{0627}\u{0651}"),
+        // E14 — plain presentation forms are not ligatures and are left alone.
+        ("\u{FE8D}\u{FE8E}", "\u{FE8D}\u{FE8E}"),
+        // E3/E4 — marks on their own are copied through.
+        ("\u{064E}\u{0651}", "\u{064E}\u{0651}"),
+        // E7 — mixed script; only the Arabic ligature changes.
+        ("\u{FEFB} Book", "\u{0644}\u{0627} Book"),
+        // E8 — digits of the three sets.
+        (
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+            "12 \u{0661}\u{0662} \u{06F1}\u{06F2}",
+        ),
+        // E9 — punctuation; E10 — astral characters.
+        (
+            "\u{0645}\u{0627}\u{FEFB}\u{060C} \u{1F389}",
+            "\u{0645}\u{0627}\u{0644}\u{0627}\u{060C} \u{1F389}",
+        ),
+        // E11–E13 — joiners, directional marks and BOM.
+        (
+            "\u{0628}\u{200D}\u{FEFB}",
+            "\u{0628}\u{200D}\u{0644}\u{0627}",
+        ),
+        ("\u{200F}\u{FEFB}", "\u{200F}\u{0644}\u{0627}"),
+        ("\u{FEFF}\u{FEFB}", "\u{FEFF}\u{0644}\u{0627}"),
+        // E17 — line terminators preserved exactly.
+        (
+            "\u{FEFB}\r\n\u{FEFC}",
+            "\u{0644}\u{0627}\r\n\u{0644}\u{0627}",
+        ),
+        ("\u{FEFB}\n\u{FEFC}", "\u{0644}\u{0627}\n\u{0644}\u{0627}"),
+        // E19 — repeated ligatures all expand.
+        (
+            "\u{FEFB}\u{FEFB}\u{FEFB}",
+            "\u{0644}\u{0627}\u{0644}\u{0627}\u{0644}\u{0627}",
+        ),
+        // E20 — no normalization is applied to combining marks.
+        ("\u{0627}\u{0654}", "\u{0627}\u{0654}"),
+    ];
+
+    #[test]
+    fn normalize_ligature_matches_the_case_table() {
+        for &(input, expected) in LIGATURE_CASES {
+            assert_eq!(normalize_ligature(input), expected, "input: {input:?}");
+            assert_eq!(
+                normalize_lamalef(input),
+                expected,
+                "normalize_lamalef input: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_ligature_expands_all_eight_forms_and_leaves_none() {
+        // The eight forms, isolated then final, in pair order.
+        const FORMS: &[(char, &str)] = &[
+            ('\u{FEF5}', "\u{0644}\u{0622}"),
+            ('\u{FEF6}', "\u{0644}\u{0622}"),
+            ('\u{FEF7}', "\u{0644}\u{0623}"),
+            ('\u{FEF8}', "\u{0644}\u{0623}"),
+            ('\u{FEF9}', "\u{0644}\u{0625}"),
+            ('\u{FEFA}', "\u{0644}\u{0625}"),
+            ('\u{FEFB}', "\u{0644}\u{0627}"),
+            ('\u{FEFC}', "\u{0644}\u{0627}"),
+        ];
+        for &(ligature, letters) in FORMS {
+            assert_eq!(
+                normalize_ligature(&ligature.to_string()),
+                letters,
+                "{ligature:?}"
+            );
+        }
+
+        // After one pass no lam-alef ligature is left, and the transform is idempotent.
+        for &(input, _) in LIGATURE_CASES {
+            let once = normalize_ligature(input);
+            assert!(
+                !once.chars().any(is_ligature),
+                "no ligature may remain: {input:?} -> {once:?}"
+            );
+            assert_eq!(normalize_ligature(&once), once, "idempotent: {input:?}");
+        }
+    }
+
+    #[test]
+    fn normalize_ligature_borrows_input_without_a_ligature() {
+        for clean in [
+            "",
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}",
+            "\u{FE8D}",
+            "Book",
+            "\u{1F389}",
+        ] {
+            assert!(
+                matches!(normalize_ligature(clean), Cow::Borrowed(_)),
+                "nothing to expand in {clean:?}"
+            );
+        }
+        assert!(matches!(normalize_ligature("\u{FEFB}"), Cow::Owned(_)));
+    }
+
+    #[test]
+    fn normalize_ligature_grows_by_one_char_per_ligature() {
+        let input = "\u{0628}\u{FEFB}\u{FEFC}\u{062A}";
+        let output = normalize_ligature(input);
+
+        assert_eq!(output, "\u{0628}\u{0644}\u{0627}\u{0644}\u{0627}\u{062A}");
+        assert_eq!(output.chars().count(), input.chars().count() + 2);
+        assert!(
+            input.is_char_boundary(input.len()),
+            "no code point is split"
+        );
+    }
+
+    #[test]
+    fn normalize_ligature_matches_the_word_spelled_out_in_the_documentation() {
+        // Pins the escape spellings used by the doc examples.
+        assert_eq!(normalize_ligature("\u{FEFB}"), "\u{0644}\u{0627}");
+        assert_eq!(
+            normalize_ligature("\u{0622}\u{0644}\u{FEF8}"),
+            "\u{0622}\u{0644}\u{0644}\u{0623}"
+        );
+    }
+
+    #[test]
+    fn normalize_ligature_into_clears_the_buffer_and_matches_the_case_table() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, expected) in LIGATURE_CASES {
+            normalize_ligature_into(input, &mut buffer);
+            assert_eq!(buffer, expected, "input: {input:?}");
+        }
+
+        normalize_ligature_into("", &mut buffer);
+        assert_eq!(buffer, "");
+
+        // The buffer is returned, so calls can be chained.
+        normalize_ligature_into("\u{FEFB}", &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0644}\u{0627}!");
+
+        // The alias writes into the same buffer and agrees with the primary name.
+        normalize_lamalef_into("\u{FEF7}", &mut buffer);
+        assert_eq!(buffer, "\u{0644}\u{0623}");
     }
 }
