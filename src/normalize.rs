@@ -23,8 +23,10 @@ use crate::unicode::classify::{
     is_haraka, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
 };
 use crate::unicode::constants::{
-    LAM_ALEF, LAM_ALEF_HAMZA_ABOVE, LAM_ALEF_HAMZA_BELOW, LAM_ALEF_MADDA_ABOVE, SIMPLE_LAM_ALEF,
+    ALEF_HAMZA_ABOVE, ALEF_HAMZA_BELOW, ALEF_MADDA, HAMZA, HAMZA_ABOVE, HAMZA_BELOW, LAM_ALEF,
+    LAM_ALEF_HAMZA_ABOVE, LAM_ALEF_HAMZA_BELOW, LAM_ALEF_MADDA_ABOVE, SHADDA, SIMPLE_LAM_ALEF,
     SIMPLE_LAM_ALEF_HAMZA_ABOVE, SIMPLE_LAM_ALEF_HAMZA_BELOW, SIMPLE_LAM_ALEF_MADDA_ABOVE,
+    WAW_HAMZA, YEH_HAMZA,
 };
 
 /// Removes every ḥaraka and shadda (`TASHKEEL`) from `text`, leaving all other characters alone.
@@ -943,6 +945,232 @@ pub fn normalize_lamalef_into<'a>(text: &str, out: &'a mut String) -> &'a mut St
     normalize_ligature_into(text, out)
 }
 
+/// Which mapping [`normalize_hamza`] applies (`AGENTS.md` §3.3, §3.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum HamzaMethod {
+    /// Map every `HAMZAT` form to a bare hamza (ء) and expand `ALEF_MADDA` to two hamzas — the
+    /// upstream default.
+    #[default]
+    Uniform,
+    /// Fold each hamza onto its carrier letter (تسهيل): the alef forms to `ALEF`, the waw/yeh carriers
+    /// to `WAW`/`YEH`, leaving a bare hamza untouched.
+    Tasheel,
+}
+
+/// A single bare hamza (`U+0621`) as replacement text.
+const HAMZA_STR: &str = "\u{0621}";
+/// Two hamzas (`U+0621 U+0621`): the expansion of `ALEF_MADDA`.
+const HAMZA_HAMZA_STR: &str = "\u{0621}\u{0621}";
+/// `HAMZA` + `ALEF` (`U+0621 U+0627`): the leading-`ALEF_MADDA` case.
+const HAMZA_ALEF_STR: &str = "\u{0621}\u{0627}";
+/// A plain alef (`U+0627`) as replacement text.
+const ALEF_STR: &str = "\u{0627}";
+/// A plain waw (`U+0648`) as replacement text.
+const WAW_STR: &str = "\u{0648}";
+/// A plain yeh (`U+064A`) as replacement text.
+const YEH_STR: &str = "\u{064A}";
+
+/// `true` for the seven code points upstream groups as `HAMZAT`.
+const fn is_hamzat(c: char) -> bool {
+    matches!(
+        c,
+        HAMZA
+            | WAW_HAMZA
+            | YEH_HAMZA
+            | HAMZA_ABOVE
+            | HAMZA_BELOW
+            | ALEF_HAMZA_ABOVE
+            | ALEF_HAMZA_BELOW
+    )
+}
+
+/// The `tasheel` (تسهيل) mapping: fold each hamza onto its carrier and leave a bare hamza alone.
+fn tasheel_replacement(c: char) -> Option<&'static str> {
+    match c {
+        ALEF_MADDA | ALEF_HAMZA_ABOVE | ALEF_HAMZA_BELOW | HAMZA_ABOVE | HAMZA_BELOW => {
+            Some(ALEF_STR)
+        }
+        WAW_HAMZA => Some(WAW_STR),
+        YEH_HAMZA => Some(YEH_STR),
+        _ => None,
+    }
+}
+
+/// The `uniform` mapping for a single character: `ALEF_MADDA` → two hamzas, the six non-bare `HAMZAT`
+/// forms → a bare hamza, and a bare hamza itself → `None` (it is already the target form, which keeps
+/// the zero-copy path for input that only contains bare hamzas).
+fn uniform_replacement(c: char) -> Option<&'static str> {
+    if c == ALEF_MADDA {
+        Some(HAMZA_HAMZA_STR)
+    } else if is_hamzat(c) {
+        (c != HAMZA).then_some(HAMZA_STR)
+    } else {
+        None
+    }
+}
+
+/// The two-character replacement for a leading `ALEF_MADDA` (the caller checked `starts_with`).
+///
+/// Upstream inspects `word[1]`/`word[2]`: the leading madda becomes `HAMZA`+`ALEF` when the input is
+/// at least three characters long, its second character is not a ḥaraka, and its third is shadda *or*
+/// the input is exactly three characters; otherwise it becomes `HAMZA`+`HAMZA`.
+fn leading_madda_replacement(text: &str) -> &'static str {
+    let mut chars = text.chars();
+    let _first = chars.next();
+    let second = chars.next();
+    let third = chars.next();
+    let char_count = text.chars().count();
+
+    let takes_alef = char_count >= 3
+        && second.is_some_and(|c| !is_haraka(c))
+        && (third == Some(SHADDA) || char_count == 3);
+
+    if takes_alef {
+        HAMZA_ALEF_STR
+    } else {
+        HAMZA_HAMZA_STR
+    }
+}
+
+/// The `uniform` result for `text`, which the caller has confirmed starts with `ALEF_MADDA`.
+fn uniform_hamza_owned(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    out.push_str(leading_madda_replacement(text));
+
+    let rest = match text.char_indices().nth(1) {
+        Some((index, _)) => &text[index..],
+        None => "",
+    };
+    push_replaced(rest, &mut out, &uniform_replacement);
+    out
+}
+
+/// Normalizes the hamza forms in `text` according to `method`.
+///
+/// Mirrors `PyArabic` `araby.normalize_hamza`. Upstream's `pyarabic.normalize.normalize_hamza` is a
+/// *different*, no-argument function (it folds the whole `ALEFAT` family to `ALEF` first); this is the
+/// single canonical location and the `araby` semantics are mirrored (`docs/PARITY.md` §2).
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::{normalize_hamza, HamzaMethod};
+///
+/// // The default (`Uniform`) maps every hamza form to a bare hamza (ء):
+/// assert_eq!(normalize_hamza("أ", HamzaMethod::Uniform), "ء");
+/// assert_eq!(normalize_hamza("آ", HamzaMethod::Uniform), "ءء");
+/// assert_eq!(normalize_hamza("آمن", HamzaMethod::Uniform), "ءامن");
+///
+/// // `Tasheel` folds each hamza onto its carrier letter instead:
+/// assert_eq!(normalize_hamza("أ", HamzaMethod::Tasheel), "ا");
+/// assert_eq!(normalize_hamza("ئ", HamzaMethod::Tasheel), "ي");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`, so it is always a
+/// `char` boundary (`AGENTS.md` §3.5).
+///
+/// # Unicode
+///
+/// `Uniform` replaces every code point of the `HAMZAT` group — the bare hamza (`U+0621`), the waw/yeh
+/// carriers (`U+0624`/`U+0626`), the alef carriers (`U+0623`/`U+0625`) and the combining `U+0654`/
+/// `U+0655` — with a bare hamza, and expands `ALEF_MADDA` (`U+0622`) to two hamzas. A leading
+/// `ALEF_MADDA` is special-cased (upstream indexes `word[1]`/`word[2]`, so the heuristic applies only
+/// at the start of the input): it becomes `HAMZA`+`ALEF` when the input is at least three characters
+/// long, its second character is not a ḥaraka and its third is shadda or the input is exactly three
+/// characters; otherwise it becomes `HAMZA`+`HAMZA`. `Tasheel` (تسهيل) folds `ALEF_MADDA`,
+/// `ALEF_HAMZA_ABOVE`, `ALEF_HAMZA_BELOW`, `U+0654` and `U+0655` to `ALEF`, `WAW_HAMZA` to `WAW` and
+/// `YEH_HAMZA` to `YEH`, leaving a bare hamza untouched. Neither method touches ḥarakāt, tatweel, the
+/// lam-alef ligatures, digits, punctuation, formatting code points or non-Arabic text, and no
+/// normalization form is applied.
+///
+/// # Performance
+///
+/// Single pass, O(n) time. Returns `Cow::Borrowed` when the input contains nothing `method` changes;
+/// otherwise allocates one `String`.
+///
+/// # Parity
+///
+/// Same as upstream `araby.normalize_hamza(word, method)`, including the leading-madda heuristic and
+/// the fact that it does **not** simplify lam-alef — upstream's docstring claims it does, but its code
+/// does not (pinned by a test).
+#[must_use]
+pub fn normalize_hamza(text: &str, method: HamzaMethod) -> Cow<'_, str> {
+    match method {
+        HamzaMethod::Tasheel => replace_by(text, tasheel_replacement),
+        HamzaMethod::Uniform => {
+            if text.starts_with(ALEF_MADDA) {
+                Cow::Owned(uniform_hamza_owned(text))
+            } else {
+                replace_by(text, uniform_replacement)
+            }
+        }
+    }
+}
+
+/// Normalizes the hamza forms in `text` and writes the result into `out`.
+///
+/// Mirrors `PyArabic` `araby.normalize_hamza`, but reuses a caller-owned buffer instead of returning a
+/// new string, which keeps hot loops free of allocations (`AGENTS.md` §3.3, §3.6).
+///
+/// `out` is **cleared first** and then replaced with the normalized text; the function returns `out`
+/// so calls can be chained.
+///
+/// # Examples
+///
+/// ```
+/// use r_abic::normalize::{normalize_hamza_into, HamzaMethod};
+///
+/// let mut buffer = String::from("stale content");
+/// normalize_hamza_into("أ", HamzaMethod::Tasheel, &mut buffer);
+/// assert_eq!(buffer, "ا");
+///
+/// // The buffer is returned, so calls can be chained:
+/// let mut other = String::new();
+/// normalize_hamza_into("آ", HamzaMethod::Uniform, &mut other).push('!');
+/// assert_eq!(other, "ءء!");
+/// ```
+///
+/// # Panics
+///
+/// Never panics: every byte offset used internally comes from `char_indices()`.
+///
+/// # Unicode
+///
+/// The replaced and kept code points are exactly those documented on [`normalize_hamza`].
+///
+/// # Performance
+///
+/// Single pass, O(n) time and no allocation beyond what `out` needs: memory is reserved only when the
+/// input starts with `ALEF_MADDA` or contains something `method` changes.
+pub fn normalize_hamza_into<'a>(
+    text: &str,
+    method: HamzaMethod,
+    out: &'a mut String,
+) -> &'a mut String {
+    match method {
+        HamzaMethod::Tasheel => replace_by_into(text, out, tasheel_replacement),
+        HamzaMethod::Uniform => {
+            if text.starts_with(ALEF_MADDA) {
+                out.clear();
+                out.reserve(text.len());
+                out.push_str(leading_madda_replacement(text));
+
+                let rest = match text.char_indices().nth(1) {
+                    Some((index, _)) => &text[index..],
+                    None => "",
+                };
+                push_replaced(rest, out, &uniform_replacement);
+                out
+            } else {
+                replace_by_into(text, out, uniform_replacement)
+            }
+        }
+    }
+}
+
 /// `true` when upstream's `[HARAKAT]$|[TANWIN]` pattern matches the character at `index`: every
 /// tanwīn mark, plus any ḥaraka that sits where Python's `$` anchor matches ([`at_pattern_end`]).
 fn is_stripped_by_lastharaka(text: &str, index: usize, ch: char) -> bool {
@@ -991,11 +1219,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        is_arabic_nonspacing_mark, normalize_lamalef, normalize_lamalef_into, normalize_ligature,
-        normalize_ligature_into, strip_diacritics, strip_diacritics_into, strip_harakat,
-        strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
-        strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
-        strip_tatweel, strip_tatweel_into,
+        HamzaMethod, is_arabic_nonspacing_mark, normalize_hamza, normalize_hamza_into,
+        normalize_lamalef, normalize_lamalef_into, normalize_ligature, normalize_ligature_into,
+        strip_diacritics, strip_diacritics_into, strip_harakat, strip_harakat_into,
+        strip_lastharaka, strip_lastharaka_into, strip_shadda, strip_shadda_into, strip_small,
+        strip_small_into, strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
     };
     use crate::unicode::classify::{
         is_haraka, is_ligature, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
@@ -2696,5 +2924,210 @@ mod tests {
         // The alias writes into the same buffer and agrees with the primary name.
         normalize_lamalef_into("\u{FEF7}", &mut buffer);
         assert_eq!(buffer, "\u{0644}\u{0623}");
+    }
+
+    /// `(input, uniform, tasheel)` triples for `normalize_hamza`, in the same escape convention as
+    /// `CASES`.
+    const HAMZA_CASES: &[(&str, &str, &str)] = &[
+        // E1 — empty input; E2 — whitespace only.
+        ("", "", ""),
+        ("   \t\n", "   \t\n", "   \t\n"),
+        // The alef carriers: uniform → bare hamza, tasheel → alef.
+        ("\u{0623}", "\u{0621}", "\u{0627}"),
+        ("\u{0625}", "\u{0621}", "\u{0627}"),
+        ("\u{0622}", "\u{0621}\u{0621}", "\u{0627}"),
+        // The waw/yeh carriers: uniform → bare hamza, tasheel → the carrier.
+        ("\u{0624}", "\u{0621}", "\u{0648}"),
+        ("\u{0626}", "\u{0621}", "\u{064A}"),
+        // The combining hamzas: uniform → hamza, tasheel → alef.
+        ("\u{0654}", "\u{0621}", "\u{0627}"),
+        ("\u{0655}", "\u{0621}", "\u{0627}"),
+        // A bare hamza maps to itself; a plain alef is untouched by either method.
+        ("\u{0621}", "\u{0621}", "\u{0621}"),
+        ("\u{0627}", "\u{0627}", "\u{0627}"),
+        // A non-leading alef-madda expands to two hamzas (uniform) or folds to alef (tasheel).
+        (
+            "\u{0645}\u{0622}\u{0628}",
+            "\u{0645}\u{0621}\u{0621}\u{0628}",
+            "\u{0645}\u{0627}\u{0628}",
+        ),
+        // In-word carriers.
+        (
+            "\u{0628}\u{0623}\u{062A}",
+            "\u{0628}\u{0621}\u{062A}",
+            "\u{0628}\u{0627}\u{062A}",
+        ),
+        // E6 — tatweel is copied through untouched.
+        (
+            "\u{0628}\u{0640}\u{062A}",
+            "\u{0628}\u{0640}\u{062A}",
+            "\u{0628}\u{0640}\u{062A}",
+        ),
+        // E7 — mixed script.
+        ("\u{0623} Book", "\u{0621} Book", "\u{0627} Book"),
+        // E10 — astral characters.
+        ("\u{1F389}", "\u{1F389}", "\u{1F389}"),
+        // E17 — line terminators preserved.
+        (
+            "\u{0623}\n\u{0625}",
+            "\u{0621}\n\u{0621}",
+            "\u{0627}\n\u{0627}",
+        ),
+        // E20 — a neutral mark (a ḥaraka) is preserved by both methods.
+        ("\u{0628}\u{064E}", "\u{0628}\u{064E}", "\u{0628}\u{064E}"),
+    ];
+
+    #[test]
+    fn normalize_hamza_matches_the_case_table() {
+        for &(input, uniform, tasheel) in HAMZA_CASES {
+            assert_eq!(
+                normalize_hamza(input, HamzaMethod::Uniform),
+                uniform,
+                "uniform: {input:?}"
+            );
+            assert_eq!(
+                normalize_hamza(input, HamzaMethod::Tasheel),
+                tasheel,
+                "tasheel: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hamza_method_defaults_to_uniform() {
+        assert_eq!(HamzaMethod::default(), HamzaMethod::Uniform);
+    }
+
+    #[test]
+    fn normalize_hamza_uniform_special_cases_a_leading_alef_madda() {
+        // Upstream inspects `word[1]`/`word[2]`, so the quirk applies only at the start of the input.
+        // "آدم" (len 3, 2nd not a ḥaraka, len == 3) → "ءادم".
+        assert_eq!(
+            normalize_hamza("\u{0622}\u{062F}\u{0645}", HamzaMethod::Uniform),
+            "\u{0621}\u{0627}\u{062F}\u{0645}"
+        );
+        // "آمَّ" (len 4, 3rd char is shadda) → "ءامَّ".
+        assert_eq!(
+            normalize_hamza("\u{0622}\u{0645}\u{0651}\u{064E}", HamzaMethod::Uniform),
+            "\u{0621}\u{0627}\u{0645}\u{0651}\u{064E}"
+        );
+        // "آن" (len 2) → "ءءن".
+        assert_eq!(
+            normalize_hamza("\u{0622}\u{0646}", HamzaMethod::Uniform),
+            "\u{0621}\u{0621}\u{0646}"
+        );
+        // A lone "آ" → "ءء".
+        assert_eq!(
+            normalize_hamza("\u{0622}", HamzaMethod::Uniform),
+            "\u{0621}\u{0621}"
+        );
+        // "آمَنَ" (len 5, 3rd char is a ḥaraka) → "ءءمَنَ".
+        assert_eq!(
+            normalize_hamza(
+                "\u{0622}\u{0645}\u{064E}\u{0646}\u{064E}",
+                HamzaMethod::Uniform
+            ),
+            "\u{0621}\u{0621}\u{0645}\u{064E}\u{0646}\u{064E}"
+        );
+        // The 2nd char being a ḥaraka also forces the two-hamza form.
+        assert_eq!(
+            normalize_hamza("\u{0622}\u{064E}\u{0645}\u{0646}", HamzaMethod::Uniform),
+            "\u{0621}\u{0621}\u{064E}\u{0645}\u{0646}"
+        );
+    }
+
+    #[test]
+    fn normalize_hamza_does_not_touch_lam_alef_ligatures() {
+        // Upstream's docstring claims it simplifies lam-alef, but the code does not — pin the truth.
+        let ligature = "\u{FEFB}";
+        assert_eq!(normalize_hamza(ligature, HamzaMethod::Uniform), ligature);
+        assert_eq!(normalize_hamza(ligature, HamzaMethod::Tasheel), ligature);
+        assert!(matches!(
+            normalize_hamza(ligature, HamzaMethod::Uniform),
+            Cow::Borrowed(_)
+        ));
+    }
+
+    #[test]
+    fn normalize_hamza_borrows_input_it_does_not_change() {
+        for clean in [
+            "",
+            "\u{0627}\u{0644}\u{0639}\u{0631}\u{0628}\u{064A}\u{0629}",
+            "\u{0640}",
+            "\u{1F389}",
+            "\u{0621}",
+            "\u{0645}\u{064E}",
+        ] {
+            assert!(
+                matches!(
+                    normalize_hamza(clean, HamzaMethod::Uniform),
+                    Cow::Borrowed(_)
+                ),
+                "uniform {clean:?}"
+            );
+            assert!(
+                matches!(
+                    normalize_hamza(clean, HamzaMethod::Tasheel),
+                    Cow::Borrowed(_)
+                ),
+                "tasheel {clean:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_hamza_output_is_char_boundary_safe() {
+        let input = "\u{0622}\u{0645}\u{0646}\u{1F389}";
+        let output = normalize_hamza(input, HamzaMethod::Uniform);
+
+        // Four characters, so the leading madda takes the two-hamza branch (not `HAMZA`+`ALEF`).
+        assert_eq!(output, "\u{0621}\u{0621}\u{0645}\u{0646}\u{1F389}");
+        assert!(
+            input.is_char_boundary(input.len()),
+            "no code point is split"
+        );
+    }
+
+    #[test]
+    fn normalize_hamza_matches_the_words_spelled_out_in_the_documentation() {
+        // Pins the escape spellings used by the doc examples.
+        assert_eq!(
+            normalize_hamza("\u{0623}", HamzaMethod::Uniform),
+            "\u{0621}"
+        );
+        assert_eq!(
+            normalize_hamza("\u{0622}", HamzaMethod::Uniform),
+            "\u{0621}\u{0621}"
+        );
+        assert_eq!(
+            normalize_hamza("\u{0622}\u{0645}\u{0646}", HamzaMethod::Uniform),
+            "\u{0621}\u{0627}\u{0645}\u{0646}"
+        );
+        assert_eq!(
+            normalize_hamza("\u{0623}", HamzaMethod::Tasheel),
+            "\u{0627}"
+        );
+        assert_eq!(
+            normalize_hamza("\u{0626}", HamzaMethod::Tasheel),
+            "\u{064A}"
+        );
+    }
+
+    #[test]
+    fn normalize_hamza_into_clears_the_buffer_and_matches_the_cow_variant() {
+        let mut buffer = String::from("stale content that must be cleared");
+        for &(input, uniform, tasheel) in HAMZA_CASES {
+            normalize_hamza_into(input, HamzaMethod::Uniform, &mut buffer);
+            assert_eq!(buffer, uniform, "uniform: {input:?}");
+            normalize_hamza_into(input, HamzaMethod::Tasheel, &mut buffer);
+            assert_eq!(buffer, tasheel, "tasheel: {input:?}");
+        }
+
+        normalize_hamza_into("", HamzaMethod::Uniform, &mut buffer);
+        assert_eq!(buffer, "");
+
+        // The buffer is returned, so calls can be chained.
+        normalize_hamza_into("\u{0623}", HamzaMethod::Tasheel, &mut buffer).push('!');
+        assert_eq!(buffer, "\u{0627}!");
     }
 }

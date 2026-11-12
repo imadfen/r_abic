@@ -10,10 +10,11 @@ use std::borrow::Cow;
 
 use common::{ALPHABET, Rng};
 use r_abic::normalize::{
-    normalize_lamalef, normalize_lamalef_into, normalize_ligature, normalize_ligature_into,
-    strip_diacritics, strip_diacritics_into, strip_harakat, strip_harakat_into, strip_lastharaka,
-    strip_lastharaka_into, strip_shadda, strip_shadda_into, strip_small, strip_small_into,
-    strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
+    HamzaMethod, normalize_hamza, normalize_hamza_into, normalize_lamalef, normalize_lamalef_into,
+    normalize_ligature, normalize_ligature_into, strip_diacritics, strip_diacritics_into,
+    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
+    strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
+    strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify::{
     is_haraka, is_ligature, is_shadda, is_small, is_tanwin, is_tashkeel, is_tatweel,
@@ -318,6 +319,65 @@ fn normalize_ligature_borrows_input_that_has_no_ligature() {
         assert!(
             matches!(normalize_ligature(&clean), Cow::Borrowed(_)),
             "counterexample: {clean:?}"
+        );
+    }
+}
+
+#[test]
+fn normalize_hamza_is_total_and_its_variants_agree() {
+    let mut buffer = String::from("stale content that must be cleared");
+
+    for input in samples() {
+        for method in [HamzaMethod::Uniform, HamzaMethod::Tasheel] {
+            let output = normalize_hamza(&input, method).into_owned();
+
+            // Idempotent: the output no longer contains anything the method changes.
+            assert_eq!(
+                normalize_hamza(&output, method).into_owned(),
+                output,
+                "idempotent ({method:?}): {input:?}"
+            );
+
+            // Tasheel never changes the character count; uniform may grow it (alef-madda → two).
+            if method == HamzaMethod::Tasheel {
+                assert_eq!(
+                    output.chars().count(),
+                    input.chars().count(),
+                    "tasheel preserves length: {input:?}"
+                );
+            }
+
+            normalize_hamza_into(&input, method, &mut buffer);
+            assert_eq!(
+                buffer, output,
+                "normalize_hamza_into ({method:?}): {input:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn normalize_hamza_borrows_input_with_nothing_to_normalize() {
+    for input in samples() {
+        // Drop every code point either method can change.
+        let clean: String = input
+            .chars()
+            .filter(|c| !matches!(*c, '\u{0621}'..='\u{0626}' | '\u{0654}' | '\u{0655}'))
+            .collect();
+
+        assert!(
+            matches!(
+                normalize_hamza(&clean, HamzaMethod::Uniform),
+                Cow::Borrowed(_)
+            ),
+            "uniform counterexample: {clean:?}"
+        );
+        assert!(
+            matches!(
+                normalize_hamza(&clean, HamzaMethod::Tasheel),
+                Cow::Borrowed(_)
+            ),
+            "tasheel counterexample: {clean:?}"
         );
     }
 }
