@@ -7,10 +7,11 @@
 use std::borrow::Cow;
 
 use r_abic::normalize::{
-    normalize_lamalef, normalize_lamalef_into, normalize_ligature, normalize_ligature_into,
-    strip_diacritics, strip_diacritics_into, strip_harakat, strip_harakat_into, strip_lastharaka,
-    strip_lastharaka_into, strip_shadda, strip_shadda_into, strip_small, strip_small_into,
-    strip_tashkeel, strip_tashkeel_into, strip_tatweel, strip_tatweel_into,
+    HamzaMethod, normalize_hamza, normalize_hamza_into, normalize_lamalef, normalize_lamalef_into,
+    normalize_ligature, normalize_ligature_into, strip_diacritics, strip_diacritics_into,
+    strip_harakat, strip_harakat_into, strip_lastharaka, strip_lastharaka_into, strip_shadda,
+    strip_shadda_into, strip_small, strip_small_into, strip_tashkeel, strip_tashkeel_into,
+    strip_tatweel, strip_tatweel_into,
 };
 use r_abic::unicode::classify;
 
@@ -461,4 +462,50 @@ fn normalize_ligature_into_can_reuse_one_buffer() {
     // The alias writes into the same buffer.
     normalize_lamalef_into("\u{FEF8}", &mut buffer);
     assert_eq!(buffer, "\u{0644}\u{0623}");
+}
+
+#[test]
+fn normalize_hamza_uniforms_and_tasheels_hamza() {
+    // Uniform: every hamza form → bare hamza; alef-madda → two hamzas.
+    assert_eq!(
+        normalize_hamza("\u{0623}\u{0625}", HamzaMethod::Uniform),
+        "\u{0621}\u{0621}"
+    );
+    assert_eq!(
+        normalize_hamza("\u{0622}", HamzaMethod::Uniform),
+        "\u{0621}\u{0621}"
+    );
+    assert!(matches!(
+        normalize_hamza("\u{0622}", HamzaMethod::Uniform),
+        Cow::Owned(_)
+    ));
+
+    // Tasheel: fold onto the carrier; a plain alef and a bare hamza are untouched.
+    assert_eq!(
+        normalize_hamza("\u{0623}\u{0625}\u{0622}", HamzaMethod::Tasheel),
+        "\u{0627}\u{0627}\u{0627}"
+    );
+    assert_eq!(
+        normalize_hamza("\u{0624}\u{0626}", HamzaMethod::Tasheel),
+        "\u{0648}\u{064A}"
+    );
+    assert!(matches!(
+        normalize_hamza(PLAIN_WORD, HamzaMethod::Tasheel),
+        Cow::Borrowed(_)
+    ));
+}
+
+#[test]
+fn normalize_hamza_into_can_reuse_one_buffer() {
+    let mut buffer = String::new();
+
+    for (word, method, expected) in [
+        ("\u{0623}", HamzaMethod::Uniform, "\u{0621}"),
+        ("\u{0623}", HamzaMethod::Tasheel, "\u{0627}"),
+        (PLAIN_WORD, HamzaMethod::Uniform, PLAIN_WORD),
+    ] {
+        normalize_hamza_into(word, method, &mut buffer);
+
+        assert_eq!(buffer, expected, "word: {word:?} method: {method:?}");
+    }
 }
